@@ -1,0 +1,70 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // or "mysql" or "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Game {
+  id         String     @id @default(uuid())
+  createdAt  DateTime   @default(now())
+  hostId     String? // Optional host player ID
+  host       Player?    @relation("GameHost", fields: [hostId], references: [id])
+  players    Player[]   @relation("GamePlayers")
+  teams      Team[]     @relation("GameTeams")
+  categories Category[] @relation("GameCategories")
+}
+
+model Player {
+  id          String       @id @default(uuid())
+  name        String
+  avatar      String?
+  teams       TeamPlayer[]
+  hostedGames Game[]       @relation("GameHost")
+  Game        Game[]       @relation("GamePlayers")
+}
+
+model Team {
+  id      String       @id @default(uuid())
+  name    String
+  color   String
+  score   Int          @default(0)
+  players TeamPlayer[]
+  Game    Game[]       @relation("GameTeams")
+}
+
+model TeamPlayer {
+  teamId   String
+  playerId String
+  team     Team   @relation(fields: [teamId], references: [id])
+  player   Player @relation(fields: [playerId], references: [id])
+
+  @@id([teamId, playerId])
+}
+
+model Category {
+  id        String     @id @default(uuid())
+  name      String
+  genre     String
+  questions Question[]
+  Game      Game[]     @relation("GameCategories")
+}
+
+model Question {
+  id         String   @id @default(uuid())
+  category   Category @relation(fields: [categoryId], references: [id])
+  categoryId String
+  points     Int
+  songName   String
+  artist     String
+  answer     String
+  isAnswered Boolean  @default(false)
+}

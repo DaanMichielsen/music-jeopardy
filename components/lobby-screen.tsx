@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, Users, Crown, Music, Trash2, Trophy } from "lucide-react"
 import type { Player, Team } from "../types/game"
 import { useDragDrop } from "../hooks/use-drag-drop"
+import { removePlayerFromTeam } from "@/app/actions/removePlayerFromTeam"
+import { createGame, getGameState } from "@/app/actions"
 
 interface LobbyScreenProps {
   players: Player[]
@@ -24,17 +26,33 @@ interface LobbyScreenProps {
 const teamColors = ["bg-red-500", "bg-blue-500", "bg-green-500", "bg-yellow-500", "bg-purple-500", "bg-pink-500"]
 
 export default function LobbyScreen({
-  players,
-  teams,
+  players: initialPlayers,
+  teams: initialTeams,
   onPlayersChange,
   onTeamsChange,
   onStartQuestionSetup,
   onViewHistory,
 }: LobbyScreenProps) {
+  const [gameId, setGameId] = useState<string | null>(null)
+  const [players, setPlayers] = useState<Player[]>(initialPlayers)
+  const [teams, setTeams] = useState<Team[]>(initialTeams)
   const [newPlayerName, setNewPlayerName] = useState("")
   const [newTeamName, setNewTeamName] = useState("")
 
   const { draggedItem, dragOverTarget, handleDragStart, handleDragOver, handleDragLeave, handleDrop } = useDragDrop()
+
+  useEffect(() => {
+    async function initGame() {
+      if (!gameId) {
+        const game = await createGame()
+        setGameId(game.id)
+        const state = await getGameState(game.id)
+        setPlayers(state.players as Player[])
+        setTeams(state.teams as unknown as Team[])
+      }
+    }
+    initGame()
+  }, [gameId])
 
   const addPlayer = () => {
     if (newPlayerName.trim()) {
@@ -97,15 +115,12 @@ export default function LobbyScreen({
     onTeamsChange(finalTeams)
   }
 
-  const movePlayerToAvailable = (player: Player) => {
-    // Remove from teams and add to available
-    const updatedTeams = teams.map((team) => ({
-      ...team,
-      players: team.players.filter((p) => p.id !== player.id),
-    }))
-
-    onPlayersChange([...players, player])
-    onTeamsChange(updatedTeams)
+  const movePlayerToAvailable = async (player: Player) => {
+    if (!gameId) return
+    await removePlayerFromTeam(gameId, player.id)
+    const state = await getGameState(gameId)
+    setPlayers(state.players as Player[])
+    setTeams(state.teams as unknown as Team[])
   }
 
   const getPlayerInitials = (name: string) => {
