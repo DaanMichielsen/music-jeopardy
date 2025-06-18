@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { put } from "@vercel/blob"
 import { updatePlayer } from "@/app/actions"
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()

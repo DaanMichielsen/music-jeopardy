@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Upload, CheckCircle, XCircle, Loader2 } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 import imageCompression from "browser-image-compression"
 
-export default function UploadAvatarPage() {
+function UploadAvatarContent() {
   const searchParams = useSearchParams()
   const gameId = searchParams.get("gameId")
   const playerId = searchParams.get("playerId")
@@ -200,37 +200,32 @@ export default function UploadAvatarPage() {
                 <img
                   src={previewUrl}
                   alt="Preview"
-                  className="w-24 h-24 rounded-full object-cover border-2 border-gray-200"
+                  className="w-24 h-24 rounded-full object-cover border-2 border-gray-300"
                 />
               </div>
-              {compressedFile && (
-                <p className="text-xs text-gray-500 text-center">
-                  Compressed size: {(compressedFile.size / 1024).toFixed(1)}KB
-                </p>
-              )}
             </div>
           )}
 
           {/* Error Message */}
           {errorMessage && (
-            <div className="flex items-center space-x-2 text-red-600 text-sm">
-              <XCircle className="w-4 h-4" />
-              <span>{errorMessage}</span>
+            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <XCircle className="w-5 h-5 text-red-500" />
+              <p className="text-sm text-red-700">{errorMessage}</p>
             </div>
           )}
 
           {/* Success Message */}
           {uploadStatus === "success" && (
-            <div className="flex items-center space-x-2 text-green-600 text-sm">
-              <CheckCircle className="w-4 h-4" />
-              <span>Avatar uploaded successfully!</span>
+            <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <CheckCircle className="w-5 h-5 text-green-500" />
+              <p className="text-sm text-green-700">Avatar uploaded successfully!</p>
             </div>
           )}
 
           {/* Upload Button */}
           <Button
             onClick={handleUpload}
-            disabled={!compressedFile || isUploading || isCompressing}
+            disabled={!compressedFile || isUploading}
             className="w-full"
           >
             {isUploading ? (
@@ -242,8 +237,45 @@ export default function UploadAvatarPage() {
               "Upload Avatar"
             )}
           </Button>
+
+          {/* File Info */}
+          {compressedFile && (
+            <div className="text-xs text-gray-500 space-y-1">
+              <p>Original size: {(selectedFile?.size || 0) / 1024 / 1024} MB</p>
+              <p>Compressed size: {(compressedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+              <p>Compression ratio: {((1 - compressedFile.size / (selectedFile?.size || 1)) * 100).toFixed(1)}%</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle>Loading...</CardTitle>
+          <CardDescription>
+            Preparing upload form...
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+export default function UploadAvatarPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <UploadAvatarContent />
+    </Suspense>
   )
 } 

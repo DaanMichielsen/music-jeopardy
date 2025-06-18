@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
+export const dynamic = 'force-dynamic'
+
 // This is a simple endpoint to trigger updates
 // In a real app, you might use WebSockets or Server-Sent Events
 export async function POST(request: NextRequest) {

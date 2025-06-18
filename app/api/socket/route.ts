@@ -3,6 +3,8 @@ import { Server as SocketIOServer } from 'socket.io'
 
 let io: SocketIOServer | null = null
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   if (!io) {
     // Initialize Socket.IO server

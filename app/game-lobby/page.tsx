@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -72,7 +72,7 @@ function DroppableAvailablePlayers({ children }: { children: React.ReactNode }) 
   );
 }
 
-export default function GameLobbyPage() {
+function GameLobbyContent() {
   const searchParams = useSearchParams()
   const gameIdFromUrl = searchParams.get('gameId')
   const router = useRouter()
@@ -617,7 +617,7 @@ export default function GameLobbyPage() {
                       </div>
                     </DraggablePlayer>
                   ))}
-                  {players.length === 0 && <p className="text-slate-400 text-center py-4">No available players</p>}
+                  {!players || (players && players.length === 0) && <p className="text-slate-400 text-center py-4">No available players</p>}
                 </CardContent>
               </DroppableAvailablePlayers>
             </Card>
@@ -672,7 +672,7 @@ export default function GameLobbyPage() {
                           <CardTitle className="text-white flex items-center gap-2">
                             {team.name}
                             <Badge variant="outline" className="text-slate-300 border-slate-600">
-                              {team.players.length}/{team.maxPlayers}
+                              {team.players && team.players.length}/{team.maxPlayers}
                             </Badge>
                           </CardTitle>
                         </div>
@@ -752,4 +752,12 @@ export default function GameLobbyPage() {
       </DragOverlay>
     </DndContext>
   )
+}
+
+export default function GameLobbyPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-white text-xl">Loading game lobby...</div>}>
+      <GameLobbyContent />
+    </Suspense>
+  );
 } 
