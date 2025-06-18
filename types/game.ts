@@ -33,5 +33,5 @@ export interface GameState {
   players: Player[]
   teams: Team[]
   categories: Category[]
-  currentScreen: "lobby" | "questions" | "game"
+  currentScreen: "lobby" | "questions" | "game" | "history"
 }

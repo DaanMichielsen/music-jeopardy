@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Users, Crown, Music, Trash2 } from "lucide-react"
+import { Plus, Users, Crown, Music, Trash2, Trophy } from "lucide-react"
 import type { Player, Team } from "../types/game"
 import { useDragDrop } from "../hooks/use-drag-drop"
 
@@ -18,6 +18,7 @@ interface LobbyScreenProps {
   onPlayersChange: (players: Player[]) => void
   onTeamsChange: (teams: Team[]) => void
   onStartQuestionSetup: () => void
+  onViewHistory: () => void
 }
 
 const teamColors = ["bg-red-500", "bg-blue-500", "bg-green-500", "bg-yellow-500", "bg-purple-500", "bg-pink-500"]
@@ -28,6 +29,7 @@ export default function LobbyScreen({
   onPlayersChange,
   onTeamsChange,
   onStartQuestionSetup,
+  onViewHistory,
 }: LobbyScreenProps) {
   const [newPlayerName, setNewPlayerName] = useState("")
   const [newTeamName, setNewTeamName] = useState("")
@@ -172,7 +174,9 @@ export default function LobbyScreen({
               <CardDescription className="text-slate-400">Drag players to teams</CardDescription>
             </CardHeader>
             <CardContent
-              className="space-y-3 min-h-[200px]"
+              className={`space-y-3 min-h-[200px] transition-colors ${
+                dragOverTarget === "available" ? "bg-slate-700/20 border-2 border-dashed border-blue-400" : ""
+              }`}
               onDragOver={(e) => handleDragOver(e, "available")}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, (player) => movePlayerToAvailable(player))}
@@ -182,7 +186,9 @@ export default function LobbyScreen({
                   key={player.id}
                   draggable
                   onDragStart={() => handleDragStart(player)}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-slate-700/50 hover:bg-slate-700/70 transition-colors cursor-move group"
+                  className={`flex items-center gap-3 p-3 rounded-lg bg-slate-700/50 hover:bg-slate-700/70 transition-colors cursor-move group ${
+                    draggedItem?.id === player.id ? "opacity-50" : ""
+                  }`}
                 >
                   <Avatar className="h-10 w-10">
                     <AvatarImage src={player.avatar || "/placeholder.svg"} />
@@ -285,7 +291,9 @@ export default function LobbyScreen({
                     onDragOver={(e) => handleDragOver(e, team.id)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, (player) => movePlayerToTeam(player, team.id))}
-                    className="min-h-[100px]"
+                    className={`min-h-[100px] transition-colors ${
+                      dragOverTarget === team.id ? "bg-slate-700/20 border-2 border-dashed border-purple-400" : ""
+                    }`}
                   >
                     <div className="grid sm:grid-cols-2 gap-3">
                       {team.players.map((player, index) => (
@@ -293,7 +301,9 @@ export default function LobbyScreen({
                           key={player.id}
                           draggable
                           onDragStart={() => handleDragStart(player)}
-                          className="flex items-center gap-3 p-3 rounded-lg bg-slate-700/30 cursor-move hover:bg-slate-700/50 transition-colors"
+                          className={`flex items-center gap-3 p-3 rounded-lg bg-slate-700/30 cursor-move hover:bg-slate-700/50 transition-colors ${
+                            draggedItem?.id === player.id ? "opacity-50" : ""
+                          }`}
                         >
                           <Avatar className="h-8 w-8">
                             <AvatarImage src={player.avatar || "/placeholder.svg"} />
@@ -334,6 +344,14 @@ export default function LobbyScreen({
                 </p>
               </div>
               <div className="flex gap-3">
+                <Button
+                  onClick={onViewHistory}
+                  variant="outline"
+                  className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                >
+                  <Trophy className="h-4 w-4 mr-2" />
+                  View History
+                </Button>
                 <Button
                   onClick={onStartQuestionSetup}
                   className="bg-purple-600 hover:bg-purple-700 text-white"

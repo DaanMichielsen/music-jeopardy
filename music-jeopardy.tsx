@@ -5,6 +5,7 @@ import type { Player, Team, Category, GameState } from "./types/game"
 import LobbyScreen from "./components/lobby-screen"
 import QuestionSetup from "./components/question-setup"
 import GameBoard from "./components/game-board"
+import HistoryScreen from "./components/history-screen"
 
 export default function MusicJeopardy() {
   const [gameState, setGameState] = useState<GameState>({
@@ -39,6 +40,10 @@ export default function MusicJeopardy() {
     setGameState((prev) => ({ ...prev, currentScreen: "lobby" }))
   }
 
+  const navigateToHistory = () => {
+    setGameState((prev) => ({ ...prev, currentScreen: "history" }))
+  }
+
   const startGame = () => {
     setGameState((prev) => ({ ...prev, currentScreen: "game" }))
   }
@@ -52,6 +57,7 @@ export default function MusicJeopardy() {
           onPlayersChange={updatePlayers}
           onTeamsChange={updateTeams}
           onStartQuestionSetup={navigateToQuestions}
+          onViewHistory={navigateToHistory}
         />
       )
     case "questions":
@@ -73,6 +79,8 @@ export default function MusicJeopardy() {
           onBackToQuestions={navigateToQuestions}
         />
       )
+    case "history":
+      return <HistoryScreen onBackToLobby={navigateToLobby} />
     default:
       return null
   }

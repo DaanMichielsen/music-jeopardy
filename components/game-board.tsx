@@ -159,7 +159,7 @@ export default function GameBoard({
                     isFlipped ? "rotate-y-180" : ""
                   }`}
                 >
-                  {/* Front of card */}
+                  {/* Front of card - Points */}
                   <Card className="absolute inset-0 bg-blue-600 border-blue-500 backface-hidden">
                     <CardContent className="flex items-center justify-center h-full">
                       <div className="text-center text-white">
@@ -169,9 +169,9 @@ export default function GameBoard({
                     </CardContent>
                   </Card>
 
-                  {/* Back of card */}
+                  {/* Back of card - Question content (mirrored) */}
                   <Card className="absolute inset-0 bg-slate-800 border-slate-700 rotate-y-180 backface-hidden">
-                    <CardContent className="flex flex-col justify-center h-full p-8">
+                    <CardContent className="flex flex-col justify-center h-full p-8 transform scale-x-[-1]">
                       <div className="text-center text-white space-y-6">
                         <Badge className="bg-yellow-600 text-white text-lg px-4 py-2">
                           ${selectedQuestion.question.points}
