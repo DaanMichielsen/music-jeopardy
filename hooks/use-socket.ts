@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
+import { getSocketConfig } from '@/lib/socket-config'
 
 export function useSocket(gameId: string | null) {
   const [isConnected, setIsConnected] = useState(false)
@@ -14,31 +15,13 @@ export function useSocket(gameId: string | null) {
   useEffect(() => {
     if (!gameId || !isClient) return
 
-    // Dynamically determine the socket server URL
-    const getSocketUrl = () => {
-      if (typeof window !== 'undefined') {
-        const hostname = window.location.hostname
-        const port = '3001' // Socket server port
-        
-        // If we're on localhost, use localhost for socket too
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-          return `http://localhost:${port}`
-        }
-        
-        // Otherwise use the same hostname as the current page
-        return `http://${hostname}:${port}`
-      }
-      
-      // Fallback for server-side rendering
-      return 'http://localhost:3001'
-    }
-
-    const socketUrl = getSocketUrl()
-    console.log('Connecting to socket server at:', socketUrl)
+    // Get socket configuration based on environment
+    const socketConfig = getSocketConfig()
+    console.log('Connecting to socket server at:', socketConfig.url)
 
     // Connect to WebSocket server
-    const socket = io(socketUrl, {
-      transports: ['websocket'], // Only use WebSocket, no polling fallback
+    const socket = io(socketConfig.url, {
+      transports: socketConfig.transports,
       timeout: 5000, // 5 second timeout
       reconnection: true,
       reconnectionAttempts: 5,
