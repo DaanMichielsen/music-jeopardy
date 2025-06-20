@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Users, Crown, Gamepad2, ArrowLeft, Wifi, WifiOff, Music, Settings, Grip } from "lucide-react"
-import { getGameState, createPlayer, createTeam, createGame, updateTeam, setGameHost } from "@/app/actions"
+import { Plus, Users, Crown, Gamepad2, ArrowLeft, Wifi, WifiOff, Music, Settings, Grip, Pencil, Trash } from "lucide-react"
+import { getGameState, createPlayer, createTeam, createGame, updateTeam, setGameHost, deleteTeam } from "@/app/actions"
 import { Player, Team } from "@prisma/client"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useSocket } from "@/hooks/use-socket"
@@ -20,6 +20,7 @@ import QuestionSetup from "@/components/question-setup"
 import GameBoard from "@/components/game-board"
 import { SpotifySDKLoader } from "@/components/spotify-sdk-loader"
 import type { Category } from "@/types/game"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 function DraggablePlayer({ player, children }: { player: Player, children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -115,6 +116,9 @@ function GameLobbyContent() {
   const [teams, setTeams] = useState<(Team & { players: Player[]; maxPlayers?: number })[]>([])
   const [newPlayerName, setNewPlayerName] = useState("")
   const [newTeamName, setNewTeamName] = useState("")
+  const [editingTeamId, setEditingTeamId] = useState<string | null>(null)
+  const [editingTeamName, setEditingTeamName] = useState("")
+  const [deletingTeamId, setDeletingTeamId] = useState<string | null>(null)
   const [currentScreen, setCurrentScreen] = useState<"lobby" | "questions" | "game">("lobby")
   const [categories, setCategories] = useState<Category[]>([])
   const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null)
@@ -259,6 +263,65 @@ function GameLobbyContent() {
       await refreshGameState()
       setNewTeamName("")
     }
+  }
+
+  // Handler for editing team name
+  const handleEditTeam = async (teamId: string, newName: string) => {
+    if (!gameId || !newName.trim()) return
+    
+    const team = teams.find(t => t.id === teamId)
+    if (!team) return
+
+    try {
+      // Update team with new name
+      await updateTeam(teamId, newName.trim(), team.color, team.players.map(p => p.id))
+      await refreshGameState()
+      setEditingTeamId(null)
+      setEditingTeamName("")
+    } catch (error) {
+      console.error('Error updating team name:', error)
+    }
+  }
+
+  // Handler for deleting team
+  const handleDeleteTeam = async (teamId: string) => {
+    if (!gameId) return
+    
+    const team = teams.find(t => t.id === teamId)
+    if (!team) return
+
+    try {
+      // Remove team from database
+      await deleteTeam(teamId)
+      
+      // Refresh game state to reflect changes
+      await refreshGameState()
+      setDeletingTeamId(null)
+    } catch (error) {
+      console.error('Error deleting team:', error)
+    }
+  }
+
+  // Handler for confirming team deletion
+  const confirmDeleteTeam = (teamId: string) => {
+    setDeletingTeamId(teamId)
+  }
+
+  // Handler for canceling team deletion
+  const cancelDeleteTeam = () => {
+    setDeletingTeamId(null)
+  }
+
+  // Handler for starting team name edit
+  const startEditTeam = (team: Team) => {
+    setEditingTeamId(team.id)
+    setEditingTeamName(team.name)
+  }
+
+  // Handler for canceling team name edit
+  const cancelEditTeam = () => {
+    setEditingTeamId(null)
+    setEditingTeamName("")
   }
 
   const getPlayerInitials = (name: string) => {
@@ -835,13 +898,68 @@ function GameLobbyContent() {
                   <DroppableTeam key={team.id} team={team}>
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <div>
-                          <CardTitle className="text-white flex items-center gap-2">
-                            {team.name}
-                            <Badge variant="outline" className="text-slate-300 border-slate-600">
-                              {Array.isArray(team.players) ? team.players.length : 0}/{team.maxPlayers}
-                            </Badge>
-                          </CardTitle>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-4 h-4 rounded-full ${team.color}`}></div>
+                          {editingTeamId === team.id ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={editingTeamName}
+                                onChange={(e) => setEditingTeamName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleEditTeam(team.id, editingTeamName)
+                                  } else if (e.key === 'Escape') {
+                                    cancelEditTeam()
+                                  }
+                                }}
+                                className="bg-slate-700 border-slate-600 text-white w-32"
+                                autoFocus
+                              />
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleEditTeam(team.id, editingTeamName)}
+                                className="text-green-400 hover:text-green-300"
+                              >
+                                ✓
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={cancelEditTeam}
+                                className="text-red-400 hover:text-red-300"
+                              >
+                                ✕
+                              </Button>
+                            </div>
+                          ) : (
+                            <CardTitle className="text-white flex items-center gap-2">
+                              {team.name}
+                              <Badge variant="outline" className="text-slate-300 border-slate-600">
+                                {Array.isArray(team.players) ? team.players.length : 0}/{team.maxPlayers}
+                              </Badge>
+                            </CardTitle>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {editingTeamId !== team.id && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => startEditTeam(team)}
+                              className="text-blue-400 hover:text-blue-300"
+                            >
+                              <Pencil className="h-4 w-4 mr-2 mx-auto" />
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => confirmDeleteTeam(team.id)}
+                            className="text-red-400 hover:text-red-300"
+                          >
+                            <Trash className="h-4 w-4 mr-2 mx-auto" />
+                          </Button>
                         </div>
                       </div>
                     </CardHeader>
@@ -928,6 +1046,34 @@ function GameLobbyContent() {
           </div>
         ) : null}
       </DragOverlay>
+
+      {/* Team Deletion Confirmation Dialog */}
+      <Dialog open={deletingTeamId !== null} onOpenChange={() => setDeletingTeamId(null)}>
+        <DialogContent className="bg-slate-800 border-slate-700">
+          <DialogHeader>
+            <DialogTitle className="text-white">Team verwijderen</DialogTitle>
+            <DialogDescription className="text-slate-300">
+              Weet je zeker dat je het team "{teams.find(t => t.id === deletingTeamId)?.name}" wilt verwijderen? 
+              Alle spelers in dit team worden teruggezet naar de beschikbare spelers.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={cancelDeleteTeam}
+              className="border-slate-600 text-slate-300 hover:bg-slate-700"
+            >
+              Annuleren
+            </Button>
+            <Button
+              onClick={() => deletingTeamId && handleDeleteTeam(deletingTeamId)}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Verwijderen
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </DndContext>
   )
 }

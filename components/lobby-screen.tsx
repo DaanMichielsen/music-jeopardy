@@ -284,7 +284,6 @@ export default function LobbyScreen({
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded-full ${team.color}`}></div>
                         <CardTitle className="text-white flex items-center gap-2">
                           {team.name}
                           <Badge variant="outline" className="text-slate-300 border-slate-600">

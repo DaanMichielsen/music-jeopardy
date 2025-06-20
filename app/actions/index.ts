@@ -179,6 +179,23 @@ export async function updateTeam(teamId: string, name: string, color: string, pl
   }
 }
 
+export async function deleteTeam(teamId: string) {
+  try {
+    // First, delete all team-player relationships for this team
+    await prisma.teamPlayer.deleteMany({
+      where: { teamId }
+    })
+
+    // Then delete the team itself
+    return await prisma.team.delete({
+      where: { id: teamId }
+    })
+  } catch (error) {
+    console.error("Failed to delete team:", error)
+    throw new Error("Failed to delete team")
+  }
+}
+
 export async function createCategory(name: string, genre: string, questions: any[], gameId?: string) {
   try {
     const categoryData: any = {
