@@ -25,9 +25,9 @@ const Avatar = React.forwardRef<
   const handleClick = async () => {
     if (gameId && playerId) {
       // Generate unique upload URL
-      const uploadUrl = `http://192.168.0.190:3000/upload-avatar?gameId=${gameId}&playerId=${playerId}`
-      // // Generate unique upload URL - use relative path for better compatibility
-      // const uploadUrl = `${window.location.origin}/upload-avatar?gameId=${gameId}&playerId=${playerId}`
+      const uploadUrl = process.env.NEXT_PUBLIC_API_BASE_URL 
+        ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload-avatar?gameId=${gameId}&playerId=${playerId}`
+        : `http://192.168.0.190:3000/upload-avatar?gameId=${gameId}&playerId=${playerId}`;
       setQrCodeUrl(uploadUrl)
       
       try {
@@ -70,7 +70,7 @@ const Avatar = React.forwardRef<
           <div className="flex flex-col items-center space-y-4">
             <div className="text-center">
               <p className="text-sm text-muted-foreground mb-4">
-                Scan this QR code with your phone to upload your avatar
+                Scan deze QR code met je telefoon om je avatar te uploaden
               </p>
             </div>
             <div className="bg-white p-4 rounded-lg">
@@ -83,13 +83,13 @@ const Avatar = React.forwardRef<
               ) : (
                 <div className="w-48 h-48 bg-gray-100 flex items-center justify-center">
                   <QrCode className="h-12 w-12 text-gray-400" />
-                  <p className="text-xs text-gray-500 ml-2">Loading...</p>
+                  <p className="text-xs text-gray-500 ml-2">Laden...</p>
                 </div>
               )}
             </div>
             <div className="text-center">
               <p className="text-xs text-muted-foreground">
-                Or visit: <span className="font-mono text-xs break-all">{qrCodeUrl}</span>
+                Of bezoek: <span className="font-mono text-xs break-all">{qrCodeUrl}</span>
               </p>
             </div>
           </div>

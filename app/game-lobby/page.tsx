@@ -8,29 +8,46 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Users, Crown, Gamepad2, ArrowLeft, RefreshCw, Wifi, WifiOff } from "lucide-react"
-import { getGameState, createPlayer, createTeam, createGame, updateTeam } from "@/app/actions"
+import { Plus, Users, Crown, Gamepad2, ArrowLeft, Wifi, WifiOff, Music, Settings, Grip } from "lucide-react"
+import { getGameState, createPlayer, createTeam, createGame, updateTeam, setGameHost } from "@/app/actions"
 import { Player, Team } from "@prisma/client"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useSocket } from "@/hooks/use-socket"
 import { DndContext, useDraggable, useDroppable, DragOverlay } from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
 import { cn } from "@/lib/utils"
+import QuestionSetup from "@/components/question-setup"
+import GameBoard from "@/components/game-board"
+import { SpotifySDKLoader } from "@/components/spotify-sdk-loader"
+import type { Category } from "@/types/game"
 
 function DraggablePlayer({ player, children }: { player: Player, children: React.ReactNode }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: player.id,
-    data: { type: 'player' },
+    data: { type: 'player', player }
   });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+  };
+
   return (
     <div
       ref={setNodeRef}
-      {...attributes}
-      {...listeners}
+      style={style}
       className={cn(
-        "flex items-center gap-3 p-3 rounded-lg bg-slate-700/50 hover:bg-slate-700/70 transition-all duration-200 cursor-move",
-        isDragging && "opacity-50 border-2 border-blue-400 shadow-lg"
+        "flex items-center gap-3 p-3 rounded-lg bg-slate-700/50 border border-slate-600 hover:bg-slate-700/70 transition-all duration-200 group",
+        isDragging && "opacity-50 scale-95 z-10"
       )}
     >
+      {/* Drag indicator handle */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="cursor-grab hover:cursor-grabbing p-1 text-slate-400 hover:text-slate-300 transition-colors flex-shrink-0"
+      >
+        <Grip className="h-5 w-5 text-white/50" />
+      </div>
       {children}
     </div>
   );
@@ -72,87 +89,100 @@ function DroppableAvailablePlayers({ children }: { children: React.ReactNode }) 
   );
 }
 
+function DroppableHost({ children }: { children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: 'host',
+    data: { type: 'host' },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "transition-all duration-200",
+        isOver && "border-2 border-yellow-400 bg-yellow-500/10 shadow-lg scale-105"
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 function GameLobbyContent() {
   const searchParams = useSearchParams()
-  const gameIdFromUrl = searchParams.get('gameId')
+  const gameId = searchParams.get('gameId')
   const router = useRouter()
   const [players, setPlayers] = useState<Player[]>([])
   const [teams, setTeams] = useState<(Team & { players: Player[]; maxPlayers?: number })[]>([])
   const [newPlayerName, setNewPlayerName] = useState("")
   const [newTeamName, setNewTeamName] = useState("")
-  const [newTeamPlayerName, setNewTeamPlayerName] = useState("")
-  const [selectedTeamId, setSelectedTeamId] = useState<string>("")
-  const [gameId, setGameId] = useState<string | null>(null)
-  const [lastRefreshTime, setLastRefreshTime] = useState<number>(Date.now())
-  const [isClient, setIsClient] = useState(false)
+  const [currentScreen, setCurrentScreen] = useState<"lobby" | "questions" | "game">("lobby")
+  const [categories, setCategories] = useState<Category[]>([])
+  const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null)
+  const [host, setHost] = useState<Player | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   // WebSocket connection - only for avatar updates
   const { isConnected, emitAvatarUpdate, socket } = useSocket(gameId)
-
-  // Drag and drop state
-  const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null)
-
-  // Fix hydration by ensuring client-side rendering
-  useEffect(() => {
-    setIsClient(true)
-  }, [])
 
   const refreshGameState = async () => {
     if (!gameId) return
     
     try {
-      console.log('=== refreshGameState START ===')
-      console.log('Fetching game state for gameId:', gameId)
+      const gameState = await getGameState(gameId)
       
-      const state = await getGameState(gameId)
-      console.log('Raw state from backend:', state)
-      console.log('Players from backend:', state.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar })))
-      console.log('Teams from backend:', state.teams.map(t => ({ 
-        id: t.id, 
-        name: t.name, 
-        players: t.players.map(tp => ({ id: tp.player.id, name: tp.player.name }))
+      // Update host
+      setHost(gameState.host)
+      
+      // Update players - only include players that are not in any team
+      const allPlayers = gameState.players || []
+      const playersInTeams = new Set<string>()
+      
+      gameState.teams.forEach(team => {
+        team.players.forEach(teamPlayer => {
+          playersInTeams.add(teamPlayer.player.id)
+        })
+      })
+      
+      const availablePlayers = allPlayers.filter(player => !playersInTeams.has(player.id))
+      setPlayers(availablePlayers)
+      
+      // Update teams with proper player structure
+      setTeams(gameState.teams.map(team => ({
+        ...team,
+        players: team.players.map(tp => tp.player),
+        maxPlayers: 4
       })))
       
-      const processedPlayers = state.players.map(p => ({
-        ...p,
-        avatar: p.avatar ?? null,
-      }))
-      
-      const processedTeams = state.teams.map(team => ({
-        ...team,
-        players: team.players.map(tp => ({
-          ...tp.player,
-          avatar: tp.player.avatar ?? null,
-        })),
-        maxPlayers: 4,
-      }))
-      
-      console.log('Processed players:', processedPlayers.map(p => ({ id: p.id, name: p.name })))
-      console.log('Processed teams:', processedTeams.map(t => ({ id: t.id, name: t.name, players: t.players.map(p => p.id) })))
-      
-      setPlayers(processedPlayers)
-      setTeams(processedTeams)
-      setLastRefreshTime(Date.now())
-      
-      console.log('State updated successfully')
-      console.log('=== refreshGameState END ===')
+      // Update categories
+      setCategories(gameState.categories || [])
     } catch (error) {
-      console.error("Failed to refresh game state:", error)
+      console.error('Error refreshing game state:', error)
     }
   }
 
   useEffect(() => {
     async function fetchData() {
-      if (gameIdFromUrl) {
+      if (gameId) {
         // Use existing game
-        setGameId(gameIdFromUrl)
-        const state = await getGameState(gameIdFromUrl)
-        setPlayers(
-          state.players.map(p => ({
-            ...p,
-            avatar: p.avatar ?? null,
-          }))
-        )
+        const state = await getGameState(gameId)
+        
+        // Set host
+        setHost(state.host)
+        
+        // Filter available players (those not in teams)
+        const allPlayers = state.players || []
+        const playersInTeams = new Set<string>()
+        
+        state.teams.forEach(team => {
+          team.players.forEach(teamPlayer => {
+            playersInTeams.add(teamPlayer.player.id)
+          })
+        })
+        
+        const availablePlayers = allPlayers.filter(player => !playersInTeams.has(player.id))
+        setPlayers(availablePlayers)
+        
+        // Set teams with proper player structure
         setTeams(
           state.teams.map(team => ({
             ...team,
@@ -163,35 +193,20 @@ function GameLobbyContent() {
             maxPlayers: 4,
           }))
         )
+        setCategories(state.categories || [])
       } else {
-        // Create new game (fallback)
-        const game = await createGame()
-        setGameId(game.id)
-        const state = await getGameState(game.id)
-        setPlayers(
-          state.players.map(p => ({
-            ...p,
-            avatar: p.avatar ?? null,
-          }))
-        )
-        setTeams(
-          state.teams.map(team => ({
-            ...team,
-            players: team.players.map(tp => ({
-              ...tp.player,
-              avatar: tp.player.avatar ?? null,
-            })),
-            maxPlayers: 4,
-          }))
-        )
+        // Create new game
+        const newGame = await createGame()
+        router.push(`/game-lobby?gameId=${newGame.id}`)
       }
+      setIsLoading(false)
     }
     fetchData()
-  }, [gameIdFromUrl])
+  }, [gameId, router])
 
   // WebSocket event listeners - only for avatar updates
   useEffect(() => {
-    if (!socket || !isClient) return
+    if (!socket) return
 
     console.log('Setting up WebSocket event listeners...')
 
@@ -228,7 +243,7 @@ function GameLobbyContent() {
       console.log('Cleaning up WebSocket event listeners...')
       socket.off('avatar-updated')
     }
-  }, [socket, players, isClient])
+  }, [socket, players])
 
   const addPlayer = async () => {
     if (newPlayerName.trim() && gameId) {
@@ -246,18 +261,6 @@ function GameLobbyContent() {
     }
   }
 
-  const addPlayerToTeam = (teamId: string) => {
-    if (newTeamPlayerName.trim()) {
-      const newPlayer: Player = {
-        id: Date.now().toString(),
-        name: newTeamPlayerName.trim(),
-        avatar: null,
-      }
-      setTeams(teams.map((team) => (team.id === teamId ? { ...team, players: [...team.players, newPlayer] } : team)))
-      setNewTeamPlayerName("")
-    }
-  }
-
   const getPlayerInitials = (name: string) => {
     return name
       .split("_")
@@ -269,6 +272,32 @@ function GameLobbyContent() {
 
   const goBackToLobbies = () => {
     router.push('/lobbies')
+  }
+
+  const goToQuestionSetup = () => {
+    setCurrentScreen("questions")
+  }
+
+  const goBackToLobby = () => {
+    setCurrentScreen("lobby")
+  }
+
+  const startGame = () => {
+    setCurrentScreen("game")
+  }
+
+  const startQuestionSetup = async () => {
+    try {
+      // Load categories from database
+      const gameState = await getGameState(gameId!)
+      setCategories(gameState.categories || [])
+      setCurrentScreen("questions")
+    } catch (error) {
+      console.error("Failed to load game state:", error)
+      // Fallback to empty categories
+      setCategories([])
+      setCurrentScreen("questions")
+    }
   }
 
   // Handler for assigning a player to a team
@@ -322,10 +351,9 @@ function GameLobbyContent() {
       const result = await updateTeam(teamId, team.name, team.color, newPlayerIds);
       console.log('updateTeam result:', result)
 
-      // Refresh the game state from the backend to ensure consistency
-      console.log('Calling refreshGameState...')
-      await refreshGameState();
-      console.log('Game state refreshed successfully')
+      // Don't refresh game state here to avoid overwriting our optimistic updates
+      // The optimistic update should be sufficient
+      console.log('Team assignment completed successfully')
     } catch (error) {
       console.error('Error in handleAssignPlayerToTeam:', error)
       
@@ -379,9 +407,8 @@ function GameLobbyContent() {
       await updateTeam(teamId, team.name, team.color, newPlayerIds);
       console.log('Team updated successfully after removal')
 
-      // Refresh the game state from the backend to ensure consistency
-      await refreshGameState();
-      console.log('Game state refreshed after removal')
+      // Don't refresh game state here to avoid overwriting our optimistic updates
+      console.log('Player removal completed successfully')
     } catch (error) {
       console.error('Error updating team after removal:', error)
       
@@ -442,9 +469,8 @@ function GameLobbyContent() {
       
       console.log('Teams updated successfully')
 
-      // Refresh the game state from the backend to ensure consistency
-      await refreshGameState();
-      console.log('Game state refreshed')
+      // Don't refresh game state here to avoid overwriting our optimistic updates
+      console.log('Player move completed successfully')
     } catch (error) {
       console.error('Error updating teams:', error)
       
@@ -461,6 +487,91 @@ function GameLobbyContent() {
         })
       )
     }
+  }
+
+  // Handler for setting game host
+  const handleSetHost = async (playerId: string) => {
+    if (!gameId) return
+    
+    const player = [...players, ...teams.flatMap(t => t.players)].find(p => p.id === playerId)
+    if (!player) return
+
+    // Optimistic update
+    setHost(player)
+
+    try {
+      await setGameHost(gameId, playerId)
+      console.log('Host set successfully')
+    } catch (error) {
+      console.error('Error setting host:', error)
+      // Rollback
+      setHost(null)
+    }
+  }
+
+  // Handler for removing host
+  const handleRemoveHost = async () => {
+    if (!gameId) return
+
+    // Optimistic update
+    setHost(null)
+
+    try {
+      await setGameHost(gameId, null)
+      console.log('Host removed successfully')
+    } catch (error) {
+      console.error('Error removing host:', error)
+      // Rollback - would need to refetch host from database
+    }
+  }
+
+  // If we're on question setup screen, render that component
+  if (currentScreen === "questions") {
+    return (
+      <QuestionSetup
+        gameId={gameId!}
+        categories={categories}
+        onCategoriesChange={setCategories}
+        onBackToLobby={goBackToLobby}
+        onStartGame={startGame}
+      />
+    )
+  }
+
+  // If we're on game screen, render the game board
+  if (currentScreen === "game") {
+    return (
+      <SpotifySDKLoader>
+        <GameBoard
+          gameId={gameId || undefined}
+          categories={categories}
+          teams={teams.map(team => ({
+            id: team.id,
+            name: team.name,
+            players: team.players.map(player => ({
+              id: player.id,
+              name: player.name,
+              avatar: player.avatar || undefined
+            })),
+            score: team.score,
+            color: `bg-${team.color || 'blue'}-500`
+          }))}
+          onCategoriesChange={setCategories}
+          onTeamsChange={(updatedTeams) => {
+            setTeams(updatedTeams.map(team => ({
+              ...team,
+              players: team.players.map(player => ({
+                ...player,
+                avatar: player.avatar || null,
+                userId: null
+              })),
+              maxPlayers: 4
+            })))
+          }}
+          onBackToQuestions={() => setCurrentScreen("questions")}
+        />
+      </SpotifySDKLoader>
+    )
   }
 
   return (
@@ -497,6 +608,10 @@ function GameLobbyContent() {
               console.log('Removing player', active.id, 'from team', currentTeam.id)
               handleRemovePlayerFromTeam(active.id as string, currentTeam.id)
             }
+          } else if (over.data.current?.type === 'host') {
+            // Player is being assigned as host
+            console.log('Setting player', active.id, 'as host')
+            handleSetHost(active.id as string)
           }
         }
         setDraggedPlayerId(null)
@@ -518,29 +633,27 @@ function GameLobbyContent() {
                 className="border-slate-600 text-slate-300 hover:bg-slate-700"
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Lobbies
+                Terug naar lobbies
               </Button>
               <div className="text-center space-y-2">
                 <div className="flex items-center justify-center gap-2">
                   <Gamepad2 className="h-8 w-8 text-purple-400" />
-                  <h1 className="text-4xl font-bold text-white">Game Lobby</h1>
-                  {isClient && (
-                    <div className="flex items-center gap-2 ml-4">
-                      {isConnected ? (
-                        <Wifi className="h-4 w-4 text-green-400" />
-                      ) : (
-                        <WifiOff className="h-4 w-4 text-red-400" />
-                      )}
-                      <span className={`text-xs ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
-                        {isConnected ? 'Live' : 'Offline'}
-                      </span>
-                    </div>
-                  )}
+                  <h1 className="text-4xl font-bold text-white">Game lobby</h1>
+                  <div className="flex items-center gap-2 ml-4">
+                    {isConnected ? (
+                      <Wifi className="h-4 w-4 text-green-400" />
+                    ) : (
+                      <WifiOff className="h-4 w-4 text-red-400" />
+                    )}
+                    <span className={`text-xs ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
+                      {isConnected ? 'Live' : 'Offline'}
+                    </span>
+                  </div>
                 </div>
-                <p className="text-slate-300">Assemble your teams and get ready for battle!</p>
+                <p className="text-slate-300">Stel teams samen om te spelen!</p>
               </div>
             </div>
-            <Button
+            {/* <Button
               onClick={refreshGameState}
               variant="outline"
               className="border-slate-600 text-slate-300 hover:bg-slate-700"
@@ -553,6 +666,14 @@ function GameLobbyContent() {
                   {new Date(lastRefreshTime).toLocaleTimeString()}
                 </span>
               )}
+            </Button> */}
+            <Button
+              onClick={() => window.location.href = '/spotify-auth'}
+              variant="outline"
+              className="border-green-500 text-green-400 hover:bg-green-500/10"
+            >
+              <Music className="h-4 w-4 mr-2" />
+              Spotify
             </Button>
           </div>
 
@@ -563,28 +684,28 @@ function GameLobbyContent() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Users className="h-5 w-5 text-blue-400" />
-                    <CardTitle className="text-white">Available Players</CardTitle>
+                    <CardTitle className="text-white">Beschikbare spelers</CardTitle>
                   </div>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button size="sm" variant="outline" className="border-blue-500 text-blue-400 hover:bg-blue-500/10">
                         <Plus className="h-4 w-4 mr-1" />
-                        Add Player
+                        Voeg speler toe
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-80 bg-slate-800 border-slate-700">
                       <div className="space-y-4">
                         <div className="space-y-2">
-                          <h4 className="font-medium text-white">Add New Player</h4>
-                          <p className="text-sm text-slate-400">Enter the player name to add them to the lobby.</p>
+                          <h4 className="font-medium text-white">Voeg nieuwe speler toe</h4>
+                          <p className="text-sm text-slate-400">Voer de naam van de speler in om deze toe te voegen aan de lobby.</p>
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="playerName" className="text-slate-300">
-                            Player Name
+                            Speler naam
                           </Label>
                           <Input
                             id="playerName"
-                            placeholder="Enter player name..."
+                            placeholder="Voer de naam van de speler in..."
                             value={newPlayerName}
                             onChange={(e) => setNewPlayerName(e.target.value)}
                             className="bg-slate-700 border-slate-600 text-white"
@@ -592,13 +713,13 @@ function GameLobbyContent() {
                           />
                         </div>
                         <Button onClick={addPlayer} className="w-full bg-blue-600 hover:bg-blue-700">
-                          Add Player
+                          Voeg speler toe
                         </Button>
                       </div>
                     </PopoverContent>
                   </Popover>
                 </div>
-                <CardDescription className="text-slate-400">Players waiting to join teams</CardDescription>
+                <CardDescription className="text-slate-400">Spelers die wachten om teams te maken</CardDescription>
               </CardHeader>
               <DroppableAvailablePlayers>
                 <CardContent className="space-y-3">
@@ -617,7 +738,7 @@ function GameLobbyContent() {
                       </div>
                     </DraggablePlayer>
                   ))}
-                  {!players || (players && players.length === 0) && <p className="text-slate-400 text-center py-4">No available players</p>}
+                  {(!players || !Array.isArray(players) || players.length === 0) && <p className="text-slate-400 text-center py-4">No available players</p>}
                 </CardContent>
               </DroppableAvailablePlayers>
             </Card>
@@ -625,30 +746,76 @@ function GameLobbyContent() {
             {/* Teams */}
             <div className="lg:col-span-2 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                  <Crown className="h-6 w-6 text-yellow-400" />
-                  Teams
-                </h2>
+                <div className="flex items-center gap-6">
+                  <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <Crown className="h-6 w-6 text-yellow-400" />
+                    Teams (4)
+                  </h2>
+                  
+                  {/* Host Section */}
+                  <div className="flex items-center gap-3">
+                    <DroppableHost>
+                      <div className="bg-slate-800/50 rounded-lg p-3 min-w-[120px] min-h-[60px] border-2 border-dashed border-yellow-500/50 flex items-center justify-center">
+                        {host ? (
+                          <DraggablePlayer player={host}>
+                            <div className="flex items-center gap-2">
+                              <Avatar 
+                                className="h-8 w-8"
+                                gameId={gameId || undefined}
+                                playerId={host.id}
+                              >
+                                <AvatarImage src={host.avatar || "/placeholder.svg"} />
+                                <AvatarFallback className="bg-yellow-600 text-white text-sm">
+                                  {getPlayerInitials(host.name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex items-center gap-1">
+                                <Crown className="h-3 w-3 text-yellow-400" />
+                                <p className="font-medium text-white text-sm truncate">{host.name}</p>
+                              </div>
+                            </div>
+                          </DraggablePlayer>
+                        ) : (
+                          <div className="text-center text-slate-400">
+                            <Crown className="h-4 w-4 mx-auto mb-1" />
+                            <p className="text-xs">Drop host here</p>
+                          </div>
+                        )}
+                      </div>
+                    </DroppableHost>
+                    {host && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleRemoveHost}
+                        className="text-slate-400 hover:text-red-400"
+                      >
+                        ×
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="border-green-500 text-green-400 hover:bg-green-500/10">
                       <Plus className="h-4 w-4 mr-2" />
-                      Add Team
+                      Voeg team toe
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-80 bg-slate-800 border-slate-700">
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <h4 className="font-medium text-white">Create New Team</h4>
-                        <p className="text-sm text-slate-400">Enter a name for the new team.</p>
+                        <h4 className="font-medium text-white">Maak nieuw team</h4>
+                        <p className="text-sm text-slate-400">Voer een naam in voor het nieuwe team.</p>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="teamName" className="text-slate-300">
-                          Team Name
+                          Team naam
                         </Label>
                         <Input
                           id="teamName"
-                          placeholder="Enter team name..."
+                          placeholder="Voer de naam van het team in..."
                           value={newTeamName}
                           onChange={(e) => setNewTeamName(e.target.value)}
                           className="bg-slate-700 border-slate-600 text-white"
@@ -656,7 +823,7 @@ function GameLobbyContent() {
                         />
                       </div>
                       <Button onClick={addTeam} className="w-full bg-green-600 hover:bg-green-700">
-                        Create Team
+                        Maak team
                       </Button>
                     </div>
                   </PopoverContent>
@@ -672,7 +839,7 @@ function GameLobbyContent() {
                           <CardTitle className="text-white flex items-center gap-2">
                             {team.name}
                             <Badge variant="outline" className="text-slate-300 border-slate-600">
-                              {team.players && team.players.length}/{team.maxPlayers}
+                              {Array.isArray(team.players) ? team.players.length : 0}/{team.maxPlayers}
                             </Badge>
                           </CardTitle>
                         </div>
@@ -680,7 +847,7 @@ function GameLobbyContent() {
                     </CardHeader>
                     <CardContent>
                       <div className="grid sm:grid-cols-2 gap-3">
-                        {team.players.map((player: Player, index: number) => (
+                        {team.players.map((player: Player) => (
                           <DraggablePlayer key={player.id} player={player}>
                             <Avatar 
                               className="h-8 w-8"
@@ -694,16 +861,15 @@ function GameLobbyContent() {
                             </Avatar>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                {index === 0 && <Crown className="h-3 w-3 text-yellow-400" />}
                                 <p className="font-medium text-white text-sm truncate">{player.name}</p>
                               </div>
                             </div>
                           </DraggablePlayer>
                         ))}
-                        {team.players.length === 0 && (
+                        {Array.isArray(team.players) && team.players.length === 0 && (
                           <div className="col-span-2 text-center py-8 text-slate-400">
                             <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                            <p>No players in this team</p>
+                            <p>Geen spelers in dit team</p>
                           </div>
                         )}
                       </div>
@@ -719,14 +885,26 @@ function GameLobbyContent() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div className="text-slate-300">
-                  <p className="font-medium">Ready to start the game?</p>
-                  <p className="text-sm text-slate-400">Make sure all players are ready before starting.</p>
+                  <p className="font-medium">Klaar om vragen op te stellen?</p>
+                  <p className="text-sm text-slate-400">Configureer je muziek categorieën en vragen voordat je het spel start.</p>
                 </div>
                 <div className="flex gap-3">
-                  <Button variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700">
-                    Shuffle Teams
+                  <Button 
+                    variant="outline" 
+                    onClick={startQuestionSetup}
+                    className="border-purple-500 text-purple-400 hover:bg-purple-500/10"
+                  >
+                    <Settings className="h-4 w-4 mr-2" />
+                    Stel vragen op
                   </Button>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white">Start Game</Button>
+                  <Button 
+                    onClick={startGame}
+                    disabled={!Array.isArray(categories) || categories.length === 0}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <Gamepad2 className="h-4 w-4 mr-2" />
+                    Start spel
+                  </Button>
                 </div>
               </div>
             </CardContent>

@@ -15,18 +15,24 @@ datasource db {
 
 model Game {
   id         String     @id @default(uuid())
+  name       String? // Optional name for the game
   createdAt  DateTime   @default(now())
   hostId     String? // Optional host player ID
   host       Player?    @relation("GameHost", fields: [hostId], references: [id])
   players    Player[]   @relation("GamePlayers")
   teams      Team[]     @relation("GameTeams")
   categories Category[] @relation("GameCategories")
+
+  // User authentication fields
+  createdByUserId String? // Clerk user ID who created this game
+  isPrivate       Boolean @default(false) // Whether the game is private
 }
 
 model Player {
   id          String       @id @default(uuid())
   name        String
   avatar      String?
+  userId      String? // Clerk user ID - links player to a specific user account
   teams       TeamPlayer[]
   hostedGames Game[]       @relation("GameHost")
   Game        Game[]       @relation("GamePlayers")
@@ -59,12 +65,29 @@ model Category {
 }
 
 model Question {
-  id         String   @id @default(uuid())
-  category   Category @relation(fields: [categoryId], references: [id])
-  categoryId String
-  points     Int
-  songName   String
-  artist     String
-  answer     String
-  isAnswered Boolean  @default(false)
+  id           String   @id @default(uuid())
+  category     Category @relation(fields: [categoryId], references: [id])
+  categoryId   String
+  points       Int
+  displayOrder Int      @default(0) // Custom ordering for questions
+  songName     String
+  artist       String
+  answer       String
+  isAnswered   Boolean  @default(false)
+
+  // Spotify track data
+  spotifyTrackId     String?
+  spotifyTrackName   String?
+  spotifyArtistNames String? // JSON array of artist names
+  spotifyAlbumName   String?
+  spotifyAlbumImage  String? // URL to album image
+  spotifyPreviewUrl  String? // URL to 30-second preview
+  spotifyDurationMs  Int? // Track duration in milliseconds
+  spotifyPopularity  Int?
+  spotifyExternalUrl String? // Spotify web URL
+
+  // Audio snippet configuration
+  snippetStartTime Int? // Start time in milliseconds
+  snippetEndTime   Int? // End time in milliseconds
+  snippetDuration  Int? // Duration in milliseconds
 }

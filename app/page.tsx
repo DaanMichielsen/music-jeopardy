@@ -1,7 +1,12 @@
-"use client"
+import { redirect } from 'next/navigation'
+import { auth } from '@clerk/nextjs/server'
 
-import MusicJeopardy from "../music-jeopardy"
-
-export default function Page() {
-  return <MusicJeopardy />
+export default async function HomePage() {
+  const { userId } = await auth()
+  
+  if (userId) {
+    redirect('/lobbies')
+  } else {
+    redirect('/sign-in')
+  }
 }

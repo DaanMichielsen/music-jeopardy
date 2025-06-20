@@ -63,7 +63,9 @@ export async function POST(request: NextRequest) {
     // Emit WebSocket event for real-time updates
     try {
       // Send a direct HTTP request to the WebSocket server to emit the event
-      const response = await fetch('http://192.168.0.190:3001/emit', {
+      const response = await fetch(process.env.NEXT_PUBLIC_SOCKET_URL 
+        ? `${process.env.NEXT_PUBLIC_SOCKET_URL}/emit`
+        : 'http://192.168.0.190:3001/emit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

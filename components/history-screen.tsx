@@ -186,7 +186,7 @@ export default function HistoryScreen({ onBackToLobby }: HistoryScreenProps) {
                       </span>
                       <span className="flex items-center gap-1">
                         <Users className="h-4 w-4" />
-                        {game.teams.reduce((total, team) => total + team.players.length, 0)} players
+                        {Array.isArray(game.teams) ? game.teams.reduce((total, team) => total + (Array.isArray(team.players) ? team.players.length : 0), 0) : 0} players
                       </span>
                       <span>Duration: {game.duration}</span>
                     </CardDescription>
@@ -246,7 +246,7 @@ export default function HistoryScreen({ onBackToLobby }: HistoryScreenProps) {
           ))}
         </div>
 
-        {gameHistory.length === 0 && (
+        {Array.isArray(gameHistory) && gameHistory.length === 0 && (
           <Card className="bg-slate-800/50 border-slate-700">
             <CardContent className="pt-6">
               <div className="text-center py-12 text-slate-400">

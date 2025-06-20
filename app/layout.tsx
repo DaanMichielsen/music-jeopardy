@@ -9,6 +9,9 @@ import {
 } from '@clerk/nextjs'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
+import { ThemeProvider } from "@/components/theme-provider"
+
+import { nlBE } from '@clerk/localizations'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -22,7 +25,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'Music Jeopardy',
-  description: 'Music Jeopardy',
+  description: 'A music trivia game with Spotify integration',
 }
 
 export default function RootLayout({
@@ -31,19 +34,27 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ClerkProvider>
-      <html lang="en">
-        <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-          <header className="flex justify-end items-center p-4 gap-4 h-16 absolute top-0 right-0 text-white">
-            <SignedOut>
-              <SignInButton />
-              <SignUpButton />
-            </SignedOut>
-            <SignedIn>
-              <UserButton />
-            </SignedIn>
-          </header>
-          {children}
+    <ClerkProvider localization={nlBE}>
+      <html lang="en" suppressHydrationWarning>
+        <body className={`${geistSans.variable} ${geistMono.variable} antialiased`} suppressHydrationWarning>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem
+            disableTransitionOnChange
+            storageKey="music-jeopardy-theme"
+          >
+            <header className="flex justify-end items-center p-4 gap-4 h-16 absolute top-0 right-0 text-white">
+              <SignedOut>
+                <SignInButton />
+                <SignUpButton />
+              </SignedOut>
+              <SignedIn>
+                <UserButton />
+              </SignedIn>
+            </header>
+            {children}
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>

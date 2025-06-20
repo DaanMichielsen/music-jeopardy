@@ -72,7 +72,7 @@ export default function LobbyScreen({
         name: newTeamName.trim(),
         players: [],
         score: 0,
-        color: teamColors[teams.length % teamColors.length],
+        color: teamColors[Array.isArray(teams) ? teams.length % teamColors.length : 0],
       }
       onTeamsChange([...teams, newTeam])
       setNewTeamName("")
@@ -222,7 +222,7 @@ export default function LobbyScreen({
                   </Button>
                 </div>
               ))}
-              {players.length === 0 && (
+              {Array.isArray(players) && players.length === 0 && (
                 <div className="text-slate-400 text-center py-8">
                   <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p>No available players</p>
@@ -288,7 +288,7 @@ export default function LobbyScreen({
                         <CardTitle className="text-white flex items-center gap-2">
                           {team.name}
                           <Badge variant="outline" className="text-slate-300 border-slate-600">
-                            {team.players.length} players
+                            {Array.isArray(team.players) ? team.players.length : 0} players
                           </Badge>
                         </CardTitle>
                       </div>
@@ -335,7 +335,7 @@ export default function LobbyScreen({
                         </div>
                       ))}
                     </div>
-                    {team.players.length === 0 && (
+                    {Array.isArray(team.players) && team.players.length === 0 && (
                       <div className="text-center py-8 text-slate-400 border-2 border-dashed border-slate-600 rounded-lg">
                         <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
                         <p>Drop players here</p>
@@ -370,7 +370,7 @@ export default function LobbyScreen({
                 <Button
                   onClick={onStartQuestionSetup}
                   className="bg-purple-600 hover:bg-purple-700 text-white"
-                  disabled={teams.length === 0}
+                  disabled={!Array.isArray(teams) || teams.length === 0}
                 >
                   Set Up Questions
                 </Button>
