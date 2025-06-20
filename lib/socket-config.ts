@@ -5,9 +5,9 @@ export const SOCKET_CONFIG = {
     url: 'http://localhost:3001',
     transports: ['websocket'] as string[]
   },
-  // Production: deployed WebSocket server (Railway, Render, etc.)
+  // Production: deployed WebSocket server (Render, Railway, etc.)
   production: {
-    url: process.env.NEXT_PUBLIC_SOCKET_URL || 'https://music-jeopardy-production.up.railway.app',
+    url: process.env.NEXT_PUBLIC_SOCKET_URL || 'https://music-jeopardy.onrender.com',
     transports: ['websocket'] as string[]
   }
 }

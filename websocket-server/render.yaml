@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: music-jeopardy-websocket
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGINS
+        value: https://music-jeopardy-green.vercel.app
+    plan: free 
