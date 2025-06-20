@@ -5,6 +5,7 @@
   "main": "server.js",
   "packageManager": "npm@8.0.0",
   "scripts": {
+    "preinstall": "echo 'Forcing npm usage' && npm --version",
     "start": "node server.js",
     "dev": "nodemon server.js",
     "build": "echo 'No build step required'",
