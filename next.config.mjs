@@ -8,7 +8,13 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
-    domains: ['localhost', '127.0.0.1', '192.168.0.190', '192.168.1.1', '10.0.0.1'],
+    domains: [
+      'localhost', 
+      '127.0.0.1', 
+      'vercel.app',
+      'vercel.com',
+      'blob.vercel-storage.com'
+    ],
     remotePatterns: [
       {
         protocol: 'https',
@@ -20,12 +26,12 @@ const nextConfig = {
       },
     ],
   },
-  allowedDevOrigins: ['http://192.168.0.190:3000'],
   env: {
-    // Allow dynamic hostname detection
-    NEXT_PUBLIC_HOSTNAME: process.env.NEXT_PUBLIC_HOSTNAME || 'localhost',
+    // Environment variables for WebSocket and API URLs
+    NEXT_PUBLIC_WEBSOCKET_URL: process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:3001',
+    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000',
+    WEBSOCKET_SERVER_URL: process.env.WEBSOCKET_SERVER_URL || 'http://localhost:3001',
   },
-  // Handle different environments
   webpack: (config, { isServer }) => {
     return config;
   }

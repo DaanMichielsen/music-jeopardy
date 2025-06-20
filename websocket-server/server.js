@@ -178,15 +178,8 @@ server.on('request', (req, res) => {
         res.end(JSON.stringify({ error: 'Invalid request' }))
       }
     })
-  } else {
-    res.writeHead(404)
-    res.end()
-  }
-})
-
-// Health check endpoint
-server.on('request', (req, res) => {
-  if (req.method === 'GET' && req.url === '/health') {
+  } else if (req.method === 'GET' && req.url === '/health') {
+    // Health check endpoint
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ 
       status: 'ok', 
@@ -194,6 +187,9 @@ server.on('request', (req, res) => {
       environment: NODE_ENV,
       activeGames: buzzerState.size
     }))
+  } else {
+    res.writeHead(404)
+    res.end()
   }
 })
 

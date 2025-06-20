@@ -69,7 +69,8 @@ function BuzzerPageContent() {
     loadGameState()
 
     // Connect to socket
-    const socket = io('http://192.168.0.190:3001', {
+    const socketUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:3001'
+    const socket = io(socketUrl, {
       transports: ['websocket']
     })
 
@@ -125,7 +126,8 @@ function BuzzerPageContent() {
 
   const handleAvatarUpload = async (playerId: string) => {
     // Create upload URL for this specific player
-    const uploadUrl = `http://192.168.0.190:3000/upload-avatar?gameId=${gameId}&playerId=${playerId}`
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000'
+    const uploadUrl = `${apiBaseUrl}/upload-avatar?gameId=${gameId}&playerId=${playerId}`
     
     // Open upload page in new tab
     window.open(uploadUrl, '_blank')

@@ -68,6 +68,70 @@ The app now conditionally loads the Spotify SDK only on pages that need it:
 
 This prevents the "onSpotifyWebPlaybackSDKReady is not defined" error on pages like the buzzer.
 
+## Production Deployment
+
+### 1. Deploy the Main App (Vercel)
+
+1. **Push your code to GitHub**
+2. **Connect to Vercel** and deploy the main app
+3. **Set environment variables in Vercel:**
+   ```
+   DATABASE_URL=your-production-database-url
+   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your-clerk-key
+   CLERK_SECRET_KEY=your-clerk-secret
+   SPOTIFY_CLIENT_ID=your-spotify-client-id
+   SPOTIFY_CLIENT_SECRET=your-spotify-client-secret
+   NEXT_PUBLIC_WEBSOCKET_URL=wss://your-websocket-server.com
+   NEXT_PUBLIC_API_BASE_URL=https://your-vercel-app.vercel.app
+   WEBSOCKET_SERVER_URL=https://your-websocket-server.com
+   ```
+
+### 2. Deploy the WebSocket Server
+
+The WebSocket server needs to be deployed separately. See the [websocket-server/README.md](websocket-server/README.md) for detailed instructions.
+
+**Quick deployment options:**
+- **Railway** (Recommended): Easy deployment with automatic HTTPS
+- **Render**: Free tier available
+- **DigitalOcean/VPS**: More control but requires manual setup
+
+### 3. Environment Variables
+
+#### For Vercel (Main App)
+```bash
+# Database
+DATABASE_URL="postgresql://..."
+
+# Authentication
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_..."
+CLERK_SECRET_KEY="sk_..."
+
+# Spotify
+SPOTIFY_CLIENT_ID="your-spotify-client-id"
+SPOTIFY_CLIENT_SECRET="your-spotify-client-secret"
+
+# WebSocket Server
+NEXT_PUBLIC_WEBSOCKET_URL="wss://your-websocket-server.com"
+WEBSOCKET_SERVER_URL="https://your-websocket-server.com"
+
+# API Base URL
+NEXT_PUBLIC_API_BASE_URL="https://your-vercel-app.vercel.app"
+```
+
+#### For WebSocket Server
+```bash
+NODE_ENV=production
+PORT=3001
+ALLOWED_ORIGINS=https://your-vercel-app.vercel.app
+```
+
+### 4. Update Spotify Redirect URIs
+
+In your Spotify Developer Dashboard, add your production callback URL:
+```
+https://your-vercel-app.vercel.app/api/spotify/callback
+```
+
 ## Architecture
 
 - **Frontend**: Next.js 15 with React 19
@@ -88,11 +152,18 @@ This prevents the "onSpotifyWebPlaybackSDKReady is not defined" error on pages l
 - Make sure the socket server is running (`pnpm socket`)
 - Check that both servers are accessible from your device's IP
 - Use `pnpm dev:full` for automatic setup
+- In production, verify the WebSocket server URL is correct
 
 ### Network Access Issues
 - Use `pnpm dev:network` instead of `pnpm dev`
 - Check your firewall settings
 - Ensure both ports 3000 and 3001 are accessible
+
+### Production Issues
+- Verify all environment variables are set correctly
+- Check that the WebSocket server is running and accessible
+- Ensure CORS is configured properly on the WebSocket server
+- Test the health check endpoint: `https://your-websocket-server.com/health`
 
 ## Deployment
 

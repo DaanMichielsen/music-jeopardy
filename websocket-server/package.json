@@ -1,0 +1,22 @@
+{
+  "name": "music-jeopardy-websocket-server",
+  "version": "1.0.0",
+  "description": "WebSocket server for Music Jeopardy game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.7.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["websocket", "socket.io", "game", "music-jeopardy"],
+  "author": "Your Name",
+  "license": "MIT"
+} 
