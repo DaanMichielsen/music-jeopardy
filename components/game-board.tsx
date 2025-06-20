@@ -407,7 +407,7 @@ export default function GameBoard({
         }
         
         // Otherwise use the same hostname as the current page
-        return `http://${hostname}:${port}/buzzer?gameId=${gameId}`
+        return `http://${hostname}/buzzer?gameId=${gameId}`
       }
       
       // Fallback for server-side rendering
