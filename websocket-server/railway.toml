@@ -10,4 +10,8 @@ restartPolicyMaxRetries = 10
 
 [deploy.envs]
 NODE_ENV = "production"
-PORT = "3001" 
+PORT = "3001"
+
+# Force npm instead of pnpm
+[build.envs]
+NIXPACKS_NODE_PACKAGE_MANAGER = "npm" 
