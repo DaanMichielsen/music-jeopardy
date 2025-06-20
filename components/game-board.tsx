@@ -916,7 +916,7 @@ export default function GameBoard({
                             </div>
                           </div>
                           
-                          {songCorrect || artistCorrect ? (
+                          {songCorrect || artistCorrect && (
                             <div className="text-center">
                               <p className="text-sm text-slate-300">
                                 Totaal te verdienen: <span className="font-bold text-green-400">
@@ -925,12 +925,6 @@ export default function GameBoard({
                                     : Math.floor(selectedQuestion.question.points * 0.5)
                                   } punten
                                 </span>
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="text-center">
-                              <p className="text-sm text-slate-400">
-                                Selecteer wat ze goed hebben geraden
                               </p>
                             </div>
                           )}
@@ -963,10 +957,10 @@ export default function GameBoard({
                                 <Button
                                   key={team.id}
                                   onClick={() => awardPoints(team.id)}
-                                  className={`${team.color} hover:opacity-80 text-white`}
+                                  className={`${team.color} hover:bg-${team.color}-700 text-white`}
                                 >
                                   <Award className="h-4 w-4 mr-2" />
-                                  Punten toekennen aan {team.name}
+                                  {team.name}
                                 </Button>
                               ))}
                             </>
