@@ -2,13 +2,13 @@
 nixPkgs = ["nodejs_18", "npm"]
 
 [phases.install]
-cmds = ["npm ci --only=production"]
+cmds = ["cd websocket-server && npm ci --only=production"]
 
 [phases.build]
 cmds = ["echo 'Build complete'"]
 
 [start]
-cmd = "npm start"
+cmd = "cd websocket-server && npm start"
 
 [variables]
 NODE_ENV = "production"
