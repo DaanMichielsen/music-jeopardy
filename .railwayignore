@@ -1,6 +1,0 @@
-pnpm-workspace.yaml
-pnpm-lock.yaml
-package.json
-.npmrc
-node_modules
-.git 

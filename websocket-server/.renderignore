@@ -1,0 +1,10 @@
+# Ignore pnpm files from parent directory
+../pnpm-lock.yaml
+../pnpm-workspace.yaml
+../package.json
+../node_modules/
+
+# Ignore development files
+*.log
+.env.local
+.env.development 
