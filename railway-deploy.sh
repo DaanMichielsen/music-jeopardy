@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "=== Railway Deployment Script ==="
+echo "=== Railway Build Script ==="
 echo "Current directory: $(pwd)"
 echo "Listing files:"
 ls -la
@@ -9,7 +9,4 @@ cd websocket-server
 echo "Changed to websocket-server directory: $(pwd)"
 echo "Installing with npm..."
 npm install --only=production
-echo "Installation complete!"
-
-echo "=== Starting server ==="
-npm start 
+echo "Build complete!" 

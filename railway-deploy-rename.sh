@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "=== Railway Deployment with File Rename ==="
+echo "=== Railway Build Script with File Rename ==="
 
 # Temporarily rename pnpm workspace files
 if [ -f "pnpm-workspace.yaml" ]; then
@@ -16,7 +16,4 @@ fi
 echo "Installing dependencies in websocket-server..."
 cd websocket-server
 npm install --only=production
-
-# Start the server
-echo "Starting server..."
-npm start 
+echo "Build complete!" 
