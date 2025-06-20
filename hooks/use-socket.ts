@@ -16,16 +16,21 @@ export function useSocket(gameId: string | null) {
 
     // Dynamically determine the socket server URL
     const getSocketUrl = () => {
-      if (typeof window === 'undefined') return undefined
-      
-      const port = process.env.NEXT_PUBLIC_SOCKET_PORT || '3001'
-      const hostname = process.env.NEXT_PUBLIC_HOSTNAME || 'localhost'
-      
-      if (process.env.NODE_ENV === 'development') {
-        return process.env.NEXT_PUBLIC_SOCKET_URL || `http://${hostname}:${port}`
+      if (typeof window !== 'undefined') {
+        const hostname = window.location.hostname
+        const port = '3001' // Socket server port
+        
+        // If we're on localhost, use localhost for socket too
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+          return `http://localhost:${port}`
+        }
+        
+        // Otherwise use the same hostname as the current page
+        return `http://${hostname}:${port}`
       }
       
-      return process.env.NEXT_PUBLIC_PRODUCTION_SOCKET_URL || `http://${hostname}:${port}`
+      // Fallback for server-side rendering
+      return 'http://localhost:3001'
     }
 
     const socketUrl = getSocketUrl()

@@ -25,9 +25,9 @@ const Avatar = React.forwardRef<
   const handleClick = async () => {
     if (gameId && playerId) {
       // Generate unique upload URL
-      const uploadUrl = process.env.NEXT_PUBLIC_API_BASE_URL 
-        ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload-avatar?gameId=${gameId}&playerId=${playerId}`
-        : `http://192.168.0.190:3000/upload-avatar?gameId=${gameId}&playerId=${playerId}`;
+      const uploadUrl = `http://192.168.0.190:3000/upload-avatar?gameId=${gameId}&playerId=${playerId}`
+      // // Generate unique upload URL - use relative path for better compatibility
+      // const uploadUrl = `${window.location.origin}/upload-avatar?gameId=${gameId}&playerId=${playerId}`
       setQrCodeUrl(uploadUrl)
       
       try {

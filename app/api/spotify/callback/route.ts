@@ -9,9 +9,9 @@ export async function GET(request: NextRequest) {
   const error = searchParams.get('error');
 
   // Determine the base URL for redirects
-  const baseUrl = process.env.NODE_ENV === 'production'
-    ? process.env.NEXT_PUBLIC_PRODUCTION_API_BASE_URL || 'https://music-jeopardy-git-main-daan-michielsen.vercel.app'
-    : process.env.NEXT_PUBLIC_NGROK_BASE_URL || 'https://9eb9-2a02-1810-440a-6000-f8b3-228a-3482-a5b5.ngrok-free.app';
+  const baseUrl = process.env.NODE_ENV === 'production' 
+    ? process.env.NEXT_PUBLIC_BASE_URL ?? ''
+    : 'https://9eb9-2a02-1810-440a-6000-f8b3-228a-3482-a5b5.ngrok-free.app';
 
   if (error) {
     return NextResponse.redirect(new URL(`/spotify-auth?error=${error}`, baseUrl));

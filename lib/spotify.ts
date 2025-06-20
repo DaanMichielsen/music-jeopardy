@@ -1,11 +1,10 @@
 import SpotifyWebApi from 'spotify-web-api-js';
 
 // Spotify API configuration
-const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID!
-
-const SPOTIFY_REDIRECT_URI = process.env.NODE_ENV === 'production'
-  ? process.env.SPOTIFY_REDIRECT_URI_PROD || 'https://music-jeopardy-git-main-daan-michielsen.vercel.app/api/spotify/callback'
-  : process.env.SPOTIFY_REDIRECT_URI_DEV || 'https://9eb9-2a02-1810-440a-6000-f8b3-228a-3482-a5b5.ngrok-free.app/api/spotify/callback';
+const SPOTIFY_CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID || '';
+const SPOTIFY_REDIRECT_URI = process.env.NODE_ENV === 'production' 
+  ? process.env.NEXT_PUBLIC_SPOTIFY_REDIRECT_URL ?? ''
+  : 'https://9eb9-2a02-1810-440a-6000-f8b3-228a-3482-a5b5.ngrok-free.app/api/spotify/callback';
 
 // Initialize Spotify API
 export const spotifyApi = new SpotifyWebApi();

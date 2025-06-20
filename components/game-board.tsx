@@ -397,20 +397,21 @@ export default function GameBoard({
     
     // Dynamically determine the buzzer URL
     const getBuzzerUrl = () => {
-      if (typeof window === 'undefined') return ''
-      
-      const port = process.env.NEXT_PUBLIC_PORT || '3000'
-      const hostname = process.env.NEXT_PUBLIC_HOSTNAME || 'localhost'
-      
-      if (process.env.NODE_ENV === 'development') {
-        return process.env.NEXT_PUBLIC_API_BASE_URL 
-          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/buzzer?gameId=${gameId}`
-          : `http://${hostname}:${port}/buzzer?gameId=${gameId}`
+      if (typeof window !== 'undefined') {
+        const hostname = window.location.hostname
+        const port = '3000' // Next.js server port
+        
+        // If we're on localhost, use localhost for buzzer too
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+          return `http://localhost:${port}/buzzer?gameId=${gameId}`
+        }
+        
+        // Otherwise use the same hostname as the current page
+        return `http://${hostname}:${port}/buzzer?gameId=${gameId}`
       }
       
-      return process.env.NEXT_PUBLIC_PRODUCTION_API_BASE_URL 
-        ? `${process.env.NEXT_PUBLIC_PRODUCTION_API_BASE_URL}/buzzer?gameId=${gameId}`
-        : `http://${hostname}:${port}/buzzer?gameId=${gameId}`
+      // Fallback for server-side rendering
+      return `http://localhost:3000/buzzer?gameId=${gameId}`
     }
     
     const buzzerUrl = getBuzzerUrl()
