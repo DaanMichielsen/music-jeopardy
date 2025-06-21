@@ -78,9 +78,49 @@ export interface Category {
   questions: Question[]
 }
 
+export interface GameHistory {
+  id: string
+  title: string
+  date: string
+  duration: string
+  categories: string[]
+  teams: {
+    id: string
+    name: string
+    score: number
+    players: string[]
+    color: string
+    position: number
+  }[]
+}
+
+// New types for lyrics translation game
+export interface LyricsTranslationQuestion {
+  id: string
+  categoryId: string
+  originalLyrics: string
+  translatedLyrics: string
+  sourceLanguage: 'en' | 'nl' | 'es' | 'fr'
+  targetLanguage: 'en' | 'nl' | 'es' | 'fr'
+  songTitle?: string
+  artist?: string
+  points: number
+  isAnswered: boolean
+  hint?: string
+}
+
+export interface LyricsTranslationCategory {
+  id: string
+  name: string
+  description?: string
+  questions: LyricsTranslationQuestion[]
+}
+
 export interface GameState {
   players: Player[]
   teams: Team[]
   categories: Category[]
-  currentScreen: "lobby" | "questions" | "game" | "history"
+  lyricsCategories?: LyricsTranslationCategory[]
+  currentScreen: "lobby" | "questions" | "game" | "history" | "lyrics-setup" | "lyrics-game"
+  gameType: "music-trivia" | "lyrics-translation"
 }

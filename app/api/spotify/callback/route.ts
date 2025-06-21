@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   // Determine the base URL for redirects
   const baseUrl = process.env.NODE_ENV === 'production' 
     ? process.env.NEXT_PUBLIC_BASE_URL ?? ''
-    : 'https://9eb9-2a02-1810-440a-6000-f8b3-228a-3482-a5b5.ngrok-free.app';
+    : 'https://7dca-2a02-1810-440a-6000-c47d-2fd5-ebad-3796.ngrok-free.app';
 
   if (error) {
     return NextResponse.redirect(new URL(`/spotify-auth?error=${error}`, baseUrl));
@@ -25,12 +25,13 @@ export async function GET(request: NextRequest) {
     // Exchange the authorization code for an access token
     const tokenData = await spotifyAuth.exchangeCodeForToken(code);
     
-    // Store the tokens securely (you might want to store these in a database)
-    // For now, we'll redirect with the tokens in the URL (not secure for production)
-    const redirectUrl = new URL('/spotify-auth', baseUrl);
-    redirectUrl.searchParams.set('access_token', tokenData.access_token);
-    redirectUrl.searchParams.set('refresh_token', tokenData.refresh_token);
-    redirectUrl.searchParams.set('expires_in', tokenData.expires_in.toString());
+    // Redirect back to the original page (stored in session before auth)
+    // We use the hash to pass tokens to the client-side without them being in browser history
+    // In a real app, you'd have a dedicated page to handle this and not expose tokens in the URL
+    const redirectPath = '/spotify-auth'; // Fallback to a safe page
+    const hash = `access_token=${tokenData.access_token}&refresh_token=${tokenData.refresh_token}&expires_in=${tokenData.expires_in}`;
+    
+    const redirectUrl = new URL(`${redirectPath}#${hash}`, baseUrl);
     
     return NextResponse.redirect(redirectUrl);
   } catch (error) {

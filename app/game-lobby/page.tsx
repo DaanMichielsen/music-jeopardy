@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Users, Crown, Gamepad2, ArrowLeft, Wifi, WifiOff, Music, Settings, Grip, Pencil, Trash } from "lucide-react"
+import { Plus, Users, Crown, Gamepad2, ArrowLeft, Wifi, WifiOff, Music, Settings, Grip, Pencil, Trash, Languages } from "lucide-react"
 import { getGameState, createPlayer, createTeam, createGame, updateTeam, setGameHost, deleteTeam } from "@/app/actions"
+import { getLyricsTranslationCategories, getLyricsTranslationCategoriesForGame } from "@/app/actions/lyrics-translation"
 import { Game, Player, Team } from "@prisma/client"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useSocket } from "@/hooks/use-socket"
@@ -18,9 +19,13 @@ import { CSS } from '@dnd-kit/utilities'
 import { cn } from "@/lib/utils"
 import QuestionSetup from "@/components/question-setup"
 import GameBoard from "@/components/game-board"
+import LyricsTranslationSetup from "@/components/lyrics-translation-setup"
+import LyricsTranslationGame from "@/components/lyrics-translation-game"
 import { SpotifySDKLoader } from "@/components/spotify-sdk-loader"
-import type { Category } from "@/types/game"
+import type { Category, LyricsTranslationCategory } from "@/types/game"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useAuth } from "@clerk/nextjs"
+import { updateGameScreen } from "@/app/actions/lyrics-translation"
 
 function DraggablePlayer({ player, children }: { player: Player, children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -112,6 +117,7 @@ function GameLobbyContent() {
   const searchParams = useSearchParams()
   const gameId = searchParams.get('gameId')
   const router = useRouter()
+  const { userId } = useAuth()
   const [gameName, setGameName] = useState<string | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [teams, setTeams] = useState<(Team & { players: Player[]; maxPlayers?: number })[]>([])
@@ -120,12 +126,17 @@ function GameLobbyContent() {
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null)
   const [editingTeamName, setEditingTeamName] = useState("")
   const [deletingTeamId, setDeletingTeamId] = useState<string | null>(null)
-  const [currentScreen, setCurrentScreen] = useState<"lobby" | "questions" | "game">("lobby")
+  const [currentScreen, setCurrentScreen] = useState<"lobby" | "questions" | "game" | "lyrics-setup" | "lyrics-game">("lobby")
   const [categories, setCategories] = useState<Category[]>([])
+  const [lyricsCategories, setLyricsCategories] = useState<LyricsTranslationCategory[]>([])
   const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null)
   const [host, setHost] = useState<Player | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [hasAttemptedGameCreation, setHasAttemptedGameCreation] = useState(false)
+  const [gameType, setGameType] = useState<"music-trivia" | "lyrics-translation">("music-trivia")
+  const [showNameDialog, setShowNameDialog] = useState(false)
+  const [isJoining, setIsJoining] = useState(false)
+  const [gameCreated, setGameCreated] = useState(false)
 
   // WebSocket connection - only for avatar updates
   const { isConnected, emitAvatarUpdate, socket } = useSocket(gameId)
@@ -161,6 +172,14 @@ function GameLobbyContent() {
       
       // Update categories
       setCategories(gameState.categories || [])
+      
+      // Load lyrics categories
+      try {
+        const loadedLyricsCategories = await getLyricsTranslationCategoriesForGame(gameId)
+        setLyricsCategories(loadedLyricsCategories)
+      } catch (error) {
+        console.error('Error loading lyrics categories:', error)
+      }
     } catch (error) {
       console.error('Error refreshing game state:', error)
     }
@@ -202,6 +221,14 @@ function GameLobbyContent() {
             }))
           )
           setCategories(state.categories || [])
+          
+          // Load lyrics categories
+          try {
+            const loadedLyricsCategories = await getLyricsTranslationCategoriesForGame(gameId)
+            setLyricsCategories(loadedLyricsCategories)
+          } catch (error) {
+            console.error('Error loading lyrics categories:', error)
+          }
         } catch (error) {
           console.error('Error loading game state:', error)
           // If game doesn't exist, redirect to lobbies instead of creating new game
@@ -383,6 +410,19 @@ function GameLobbyContent() {
 
   const startGame = () => {
     setCurrentScreen("game")
+  }
+
+  const startLyricsTranslationSetup = () => {
+    setGameType("lyrics-translation")
+    setCurrentScreen("lyrics-setup")
+  }
+
+  const startLyricsTranslationGame = () => {
+    setCurrentScreen("lyrics-game")
+  }
+
+  const goBackToLyricsSetup = () => {
+    setCurrentScreen("lyrics-setup")
   }
 
   // Helper function to store return URL when going to auth
@@ -642,6 +682,51 @@ function GameLobbyContent() {
         onCategoriesChange={setCategories}
         onBackToLobby={goBackToLobby}
         onStartGame={startGame}
+      />
+    )
+  }
+
+  // If we're on lyrics translation setup screen, render that component
+  if (currentScreen === "lyrics-setup") {
+    return (
+      <LyricsTranslationSetup
+        gameId={gameId || ""}
+        onBackToLobby={goBackToLobby}
+        onStartGame={startLyricsTranslationGame}
+      />
+    )
+  }
+
+  // If we're on lyrics translation game screen, render that component
+  if (currentScreen === "lyrics-game") {
+    return (
+      <LyricsTranslationGame
+        gameId={gameId || ""}
+        categories={lyricsCategories}
+        teams={teams.map(team => ({
+          id: team.id,
+          name: team.name,
+          players: team.players.map(player => ({
+            id: player.id,
+            name: player.name,
+            avatar: player.avatar || undefined
+          })),
+          score: team.score,
+          color: team.color || 'blue'
+        }))}
+        onCategoriesChange={setLyricsCategories}
+        onTeamsChange={(updatedTeams) => {
+          setTeams(updatedTeams.map(team => ({
+            ...team,
+            players: team.players.map(player => ({
+              ...player,
+              avatar: player.avatar || null,
+              userId: null
+            })),
+            maxPlayers: 4
+          })))
+        }}
+        onBackToSetup={goBackToLyricsSetup}
       />
     )
   }
@@ -1048,8 +1133,8 @@ function GameLobbyContent() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div className="text-slate-300">
-                  <p className="font-medium">Klaar om vragen op te stellen?</p>
-                  <p className="text-sm text-slate-400">Configureer je muziek categorieën en vragen voordat je het spel start.</p>
+                  <p className="font-medium">Choose your game type</p>
+                  <p className="text-sm text-slate-400">Select between music trivia or lyrics translation challenges.</p>
                 </div>
                 <div className="flex gap-3">
                   <Button 
@@ -1057,16 +1142,16 @@ function GameLobbyContent() {
                     onClick={startQuestionSetup}
                     className="border-purple-500 text-purple-400 hover:bg-purple-500/10"
                   >
-                    <Settings className="h-4 w-4 mr-2" />
-                    Stel vragen op
+                    <Music className="h-4 w-4 mr-2" />
+                    Music Trivia
                   </Button>
                   <Button 
-                    onClick={startGame}
-                    disabled={!Array.isArray(categories) || categories.length === 0}
-                    className="bg-green-600 hover:bg-green-700 text-white"
+                    variant="outline"
+                    onClick={startLyricsTranslationSetup}
+                    className="border-blue-500 text-blue-400 hover:bg-blue-500/10"
                   >
-                    <Gamepad2 className="h-4 w-4 mr-2" />
-                    Start spel
+                    <Languages className="h-4 w-4 mr-2" />
+                    Lyrics Translation
                   </Button>
                 </div>
               </div>

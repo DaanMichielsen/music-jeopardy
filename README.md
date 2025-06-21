@@ -10,6 +10,71 @@ A music trivia game with Spotify integration, real-time multiplayer features, an
 - 🎮 **Game Board**: Interactive Jeopardy-style game board
 - 🎨 **Modern UI**: Beautiful dark theme with smooth animations
 - 🔐 **Authentication**: Clerk-based user authentication
+- 🎵 **Lyrics Translation**: Translate song lyrics between Dutch and English
+
+## Game Types
+
+### 1. Music Trivia
+- Create categories with music questions
+- Integrate with Spotify for audio playback
+- Use buzzer system for competitive gameplay
+- Score tracking and team management
+
+### 2. Lyrics Translation
+- Paste lyrics in Dutch or English
+- Automatic translation using DeepL API
+- Create translation challenges
+- Team-based scoring system
+
+## Lyrics Translation Game
+
+The lyrics translation game allows players to translate song lyrics between different languages. Players can create categories and questions, then play a translation game where they translate lyrics from one language to another.
+
+### Supported Languages
+
+The lyrics translation game supports the following languages:
+- **English (en)** - English lyrics
+- **Dutch (nl)** - Dutch lyrics  
+- **Spanish (es)** - Spanish lyrics
+- **French (fr)** - French lyrics
+
+Players can translate between any combination of these languages (e.g., English to Spanish, French to Dutch, etc.).
+
+### Setup
+
+1. **DeepL API Configuration**: 
+   - Sign up for a free DeepL API key at https://www.deepl.com/pro-api
+   - Add your API key to your `.env` file:
+   ```
+   DEEPL_API_KEY=your_api_key_here
+   ```
+
+2. **Database Migration**: Run the database migration to add the new tables:
+   ```bash
+   npx prisma migrate dev --name add-lyrics-translation-support
+   ```
+
+### How to Use
+
+1. **Create a Game**: Start a new game and select "Lyrics Translation" as the game type
+2. **Setup Categories**: Create categories to organize your translation questions
+3. **Add Questions**: For each question:
+   - Choose source and target languages
+   - Paste original lyrics
+   - Use the "Translate Lyrics" button to get an AI translation
+   - Optionally add song title, artist, and hints
+   - Set point values (100-500 points)
+4. **Play the Game**: Players take turns translating lyrics between the specified languages
+
+### Features
+
+- **AI-Powered Translation**: Uses DeepL API for high-quality translations
+- **Multiple Language Support**: Translate between English, Dutch, Spanish, and French
+- **Category Organization**: Group questions by theme or difficulty
+- **Hints System**: Add helpful hints for players
+- **Point System**: Assign different point values to questions
+- **Team-Based Scoring**: Track scores for multiple teams
+- **Progress Tracking**: Monitor game progress and completion
 
 ## Development Setup
 
@@ -19,6 +84,7 @@ A music trivia game with Spotify integration, real-time multiplayer features, an
 - Spotify Developer Account
 - Clerk Account for authentication
 - Prisma database (PostgreSQL recommended)
+- DeepL API Account (for lyrics translation)
 
 ### Quick Start
 
@@ -30,7 +96,7 @@ A music trivia game with Spotify integration, real-time multiplayer features, an
 2. **Set up environment variables:**
    ```bash
    cp .env.example .env.local
-   # Fill in your Spotify and Clerk credentials
+   # Fill in your Spotify, Clerk, and DeepL credentials
    ```
 
 3. **Set up database:**

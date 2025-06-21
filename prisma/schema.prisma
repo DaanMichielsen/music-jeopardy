@@ -14,18 +14,23 @@ datasource db {
 }
 
 model Game {
-  id         String     @id @default(uuid())
-  name       String? // Optional name for the game
-  createdAt  DateTime   @default(now())
-  hostId     String? // Optional host player ID
-  host       Player?    @relation("GameHost", fields: [hostId], references: [id])
-  players    Player[]   @relation("GamePlayers")
-  teams      Team[]     @relation("GameTeams")
-  categories Category[] @relation("GameCategories")
+  id               String                      @id @default(uuid())
+  name             String? // Optional name for the game
+  createdAt        DateTime                    @default(now())
+  hostId           String? // Optional host player ID
+  host             Player?                     @relation("GameHost", fields: [hostId], references: [id])
+  players          Player[]                    @relation("GamePlayers")
+  teams            Team[]                      @relation("GameTeams")
+  categories       Category[]                  @relation("GameCategories")
+  lyricsCategories LyricsTranslationCategory[] @relation("GameLyricsCategories")
 
   // User authentication fields
   createdByUserId String? // Clerk user ID who created this game
   isPrivate       Boolean @default(false) // Whether the game is private
+
+  // Game type and state
+  gameType      String @default("music-trivia") // "music-trivia" or "lyrics-translation"
+  currentScreen String @default("lobby") // "lobby", "questions", "game", "lyrics-setup", "lyrics-game"
 }
 
 model Player {
@@ -90,4 +95,28 @@ model Question {
   snippetStartTime Int? // Start time in milliseconds
   snippetEndTime   Int? // End time in milliseconds
   snippetDuration  Int? // Duration in milliseconds
+}
+
+// New models for lyrics translation game
+model LyricsTranslationCategory {
+  id          String                      @id @default(uuid())
+  name        String
+  description String?
+  questions   LyricsTranslationQuestion[]
+  Game        Game[]                      @relation("GameLyricsCategories")
+}
+
+model LyricsTranslationQuestion {
+  id               String                    @id @default(uuid())
+  category         LyricsTranslationCategory @relation(fields: [categoryId], references: [id])
+  categoryId       String
+  originalLyrics   String
+  translatedLyrics String
+  sourceLanguage   String // "en", "nl", "es", "fr"
+  targetLanguage   String // "en", "nl", "es", "fr"
+  songTitle        String?
+  artist           String?
+  points           Int
+  isAnswered       Boolean                   @default(false)
+  hint             String?
 }
