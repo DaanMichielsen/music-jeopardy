@@ -1,0 +1,15 @@
+Favicon Generation Instructions:
+
+1. The SVG favicon has been created at /public/favicon.svg
+2. To generate additional formats:
+   - Visit favicon.io and upload the SVG
+   - Or use a tool like Figma/Sketch to export in different sizes
+   - Recommended sizes: 16x16, 32x32, 48x48, 192x192, 512x512
+
+3. Place the generated files in the /public directory:
+   - favicon.ico (16x16, 32x32)
+   - apple-touch-icon.png (180x180)
+   - icon-192.png (192x192)
+   - icon-512.png (512x512)
+
+4. The layout.tsx file has been updated to include favicon metadata.
