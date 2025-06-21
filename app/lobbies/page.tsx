@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Plus, Users, ArrowRight, Lock, Globe, Trash2 } from "lucide-react"
+import { Plus, Users, ArrowRight, Lock, Globe, Trash2, CircleX } from "lucide-react"
 import { createGame, getAllGames, deletePlayer, deleteGame } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
@@ -94,6 +94,8 @@ export default function LobbiesPage() {
   }
 
   const joinLobby = (gameId: string) => {
+    // Clear any stored return URL when joining a game from lobbies
+    sessionStorage.removeItem('returnToGame')
     router.push(`/game-lobby?gameId=${gameId}`)
   }
 
@@ -237,15 +239,15 @@ export default function LobbiesPage() {
 
         {/* Existing Lobbies */}
         <div className="space-y-4">
-          <h2 className="text-2xl font-bold text-white">Your Lobbies</h2>
+          <h2 className="text-2xl font-bold text-white">Jouw spellen</h2>
           
           {Array.isArray(games) && games.length === 0 ? (
             <Card className="bg-slate-800/50 border-slate-700">
               <CardContent className="pt-6">
                 <div className="text-center py-8 text-slate-400">
                   <Users className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                  <h3 className="text-xl font-semibold mb-2">Geen lobbies gevonden</h3>
-                  <p className="text-sm">Maak een nieuwe lobby om te beginnen!</p>
+                  <h3 className="text-xl font-semibold mb-2">Geen spellen gevonden</h3>
+                  <p className="text-sm">Maak een nieuwe spel om te beginnen!</p>
                 </div>
               </CardContent>
             </Card>
@@ -290,7 +292,7 @@ export default function LobbiesPage() {
                           className="border-green-500 text-green-400 hover:bg-green-500/10"
                         >
                           <ArrowRight className="h-4 w-4 mr-2" />
-                          Neem deel
+                          Spelen
                         </Button>
                         <Button
                           onClick={() => handleDeleteGame(game.id)}
@@ -320,7 +322,7 @@ export default function LobbiesPage() {
                                 onClick={() => handleDeletePlayer(player.id)}
                                 className="h-4 w-4 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
                               >
-                                <Trash2 className="h-3 w-3" />
+                                <CircleX className="h-3 w-3" />
                               </Button>
                             </div>
                           ))}

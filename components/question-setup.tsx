@@ -655,7 +655,7 @@ export default function QuestionSetup({
                                         <strong>Artiest:</strong> {question.artist}
                                       </p>
                                       <p className="text-slate-300">
-                                        <strong>Antwoord:</strong> {question.answer}
+                                        <strong>Hints:</strong> {question.answer}
                                       </p>
                                       {question.spotifyTrackId && (
                                         <div className="flex items-center gap-2 text-green-400 mt-1">

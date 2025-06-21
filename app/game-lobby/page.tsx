@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Badge } from "@/components/ui/badge"
 import { Plus, Users, Crown, Gamepad2, ArrowLeft, Wifi, WifiOff, Music, Settings, Grip, Pencil, Trash } from "lucide-react"
 import { getGameState, createPlayer, createTeam, createGame, updateTeam, setGameHost, deleteTeam } from "@/app/actions"
-import { Player, Team } from "@prisma/client"
+import { Game, Player, Team } from "@prisma/client"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useSocket } from "@/hooks/use-socket"
 import { DndContext, useDraggable, useDroppable, DragOverlay } from '@dnd-kit/core'
@@ -112,6 +112,7 @@ function GameLobbyContent() {
   const searchParams = useSearchParams()
   const gameId = searchParams.get('gameId')
   const router = useRouter()
+  const [gameName, setGameName] = useState<string | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [teams, setTeams] = useState<(Team & { players: Player[]; maxPlayers?: number })[]>([])
   const [newPlayerName, setNewPlayerName] = useState("")
@@ -124,6 +125,7 @@ function GameLobbyContent() {
   const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null)
   const [host, setHost] = useState<Player | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [hasAttemptedGameCreation, setHasAttemptedGameCreation] = useState(false)
 
   // WebSocket connection - only for avatar updates
   const { isConnected, emitAvatarUpdate, socket } = useSocket(gameId)
@@ -168,45 +170,79 @@ function GameLobbyContent() {
     async function fetchData() {
       if (gameId) {
         // Use existing game
-        const state = await getGameState(gameId)
-        
-        // Set host
-        setHost(state.host)
-        
-        // Filter available players (those not in teams)
-        const allPlayers = state.players || []
-        const playersInTeams = new Set<string>()
-        
-        state.teams.forEach(team => {
-          team.players.forEach(teamPlayer => {
-            playersInTeams.add(teamPlayer.player.id)
+        try {
+          const state = await getGameState(gameId)
+          setGameName(state.name)
+          
+          // Set host
+          setHost(state.host)
+          
+          // Filter available players (those not in teams)
+          const allPlayers = state.players || []
+          const playersInTeams = new Set<string>()
+          
+          state.teams.forEach(team => {
+            team.players.forEach(teamPlayer => {
+              playersInTeams.add(teamPlayer.player.id)
+            })
           })
-        })
+          
+          const availablePlayers = allPlayers.filter(player => !playersInTeams.has(player.id))
+          setPlayers(availablePlayers)
+          
+          // Set teams with proper player structure
+          setTeams(
+            state.teams.map(team => ({
+              ...team,
+              players: team.players.map(tp => ({
+                ...tp.player,
+                avatar: tp.player.avatar ?? null,
+              })),
+              maxPlayers: 4,
+            }))
+          )
+          setCategories(state.categories || [])
+        } catch (error) {
+          console.error('Error loading game state:', error)
+          // If game doesn't exist, redirect to lobbies instead of creating new game
+          router.push('/lobbies')
+          return
+        }
+      } else if (!hasAttemptedGameCreation) {
+        // Only create a new game if we haven't attempted it before
+        // This prevents creating new games during auth redirects
+        setHasAttemptedGameCreation(true)
         
-        const availablePlayers = allPlayers.filter(player => !playersInTeams.has(player.id))
-        setPlayers(availablePlayers)
-        
-        // Set teams with proper player structure
-        setTeams(
-          state.teams.map(team => ({
-            ...team,
-            players: team.players.map(tp => ({
-              ...tp.player,
-              avatar: tp.player.avatar ?? null,
-            })),
-            maxPlayers: 4,
-          }))
+        // Check if we're coming from an auth redirect by looking at referrer or session storage
+        const isFromAuth = typeof window !== 'undefined' && (
+          sessionStorage.getItem('returnToGame') ||
+          document.referrer.includes('/sign-in') ||
+          document.referrer.includes('/spotify-auth')
         )
-        setCategories(state.categories || [])
+        
+        if (isFromAuth) {
+          // If coming from auth, redirect to lobbies instead of creating new game
+          console.log('Detected auth redirect, going to lobbies instead of creating new game')
+          router.push('/lobbies')
+          return
+        }
+        
+        // Create new game only if this is a genuine new game request
+        try {
+          const newGame = await createGame()
+          router.push(`/game-lobby?gameId=${newGame.id}`)
+        } catch (error) {
+          console.error('Error creating new game:', error)
+          router.push('/lobbies')
+        }
       } else {
-        // Create new game
-        const newGame = await createGame()
-        router.push(`/game-lobby?gameId=${newGame.id}`)
+        // If we've already attempted game creation and still no gameId, redirect to lobbies
+        router.push('/lobbies')
       }
       setIsLoading(false)
     }
     fetchData()
-  }, [gameId, router])
+  }, [gameId, router, hasAttemptedGameCreation])
 
   // WebSocket event listeners - only for avatar updates
   useEffect(() => {
@@ -347,6 +383,15 @@ function GameLobbyContent() {
 
   const startGame = () => {
     setCurrentScreen("game")
+  }
+
+  // Helper function to store return URL when going to auth
+  const navigateToAuthWithReturn = (authUrl: string) => {
+    if (gameId) {
+      // Store the current game URL to return to after auth
+      sessionStorage.setItem('returnToGame', `/game-lobby?gameId=${gameId}`)
+    }
+    window.location.href = authUrl
   }
 
   const startQuestionSetup = async () => {
@@ -696,12 +741,12 @@ function GameLobbyContent() {
                 className="border-slate-600 text-slate-300 hover:bg-slate-700"
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Terug naar lobbies
+                Terug naar spellen
               </Button>
               <div className="text-center space-y-2">
                 <div className="flex items-center justify-center gap-2">
                   <Gamepad2 className="h-8 w-8 text-purple-400" />
-                  <h1 className="text-4xl font-bold text-white">Game lobby</h1>
+                  <h1 className="text-4xl font-bold text-white">{gameName}</h1>
                   <div className="flex items-center gap-2 ml-4">
                     {isConnected ? (
                       <Wifi className="h-4 w-4 text-green-400" />
@@ -731,7 +776,7 @@ function GameLobbyContent() {
               )}
             </Button> */}
             <Button
-              onClick={() => window.location.href = '/spotify-auth'}
+              onClick={() => navigateToAuthWithReturn('/spotify-auth')}
               variant="outline"
               className="border-green-500 text-green-400 hover:bg-green-500/10"
             >
@@ -1080,8 +1125,8 @@ function GameLobbyContent() {
 
 export default function GameLobbyPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-white text-xl">Loading game lobby...</div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-white text-xl">Spel laden...</div>}>
       <GameLobbyContent />
     </Suspense>
   );
-} 
+}

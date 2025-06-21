@@ -325,7 +325,8 @@ export async function getGameState(gameId: string) {
       host: game.host,
       players: game.players || [],
       teams: game.teams || [],
-      categories: game.categories || []
+      categories: game.categories || [],
+      name: game.name || ''
     }
   } catch (error) {
     console.error("Failed to get game state:", error)

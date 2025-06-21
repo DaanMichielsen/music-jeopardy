@@ -42,6 +42,17 @@ function SpotifyAuthPageContent() {
       localStorage.setItem('spotify_refresh_token', refreshToken);
       localStorage.setItem('spotify_expires_in', expiresIn);
       localStorage.setItem('spotify_token_timestamp', Date.now().toString());
+      
+      // Check if there's a return URL stored in session storage
+      const returnToGame = sessionStorage.getItem('returnToGame');
+      if (returnToGame) {
+        // Clear the stored return URL
+        sessionStorage.removeItem('returnToGame');
+        // Redirect back to the game
+        setTimeout(() => {
+          window.location.href = returnToGame;
+        }, 1000); // Small delay to show success message
+      }
     }
   }, [searchParams]);
 
@@ -119,6 +130,13 @@ function SpotifyAuthPageContent() {
                   <span className="text-green-400 font-medium">Succesvol verbonden met Spotify!</span>
                 </div>
                 
+                <p className="text-green-200">
+                  {sessionStorage.getItem('returnToGame') 
+                    ? 'Je wordt automatisch teruggeleid naar je spel...' 
+                    : 'Je kunt nu liedjes zoeken en afspelen in je spel!'
+                  }
+                </p>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-green-900/20 p-3 rounded-lg">
                     <p className="text-xs text-green-300">Toegangstoken</p>

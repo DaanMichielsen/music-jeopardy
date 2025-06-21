@@ -752,8 +752,7 @@ export default function GameBoard({
                               !isConnected ? 'opacity-50 cursor-not-allowed' : ''
                             }`}
                           >
-                            <ExternalLink className="h-4 w-4 mr-1" />
-                            Volledig l
+                            <Play className="h-4 w-4 mr-1" />
                           </Button>
                         )}
                       </div>
@@ -811,7 +810,6 @@ export default function GameBoard({
                       {showAnswer && !hideAnswer && (
                         <div className="bg-slate-800/80 border border-slate-600 rounded-lg p-6 max-w-lg">
                           <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-lg font-bold text-white">Song informatie</h4>
                             <Button
                               size="sm"
                               variant="ghost"
@@ -845,12 +843,12 @@ export default function GameBoard({
                                   <span className="text-slate-400 text-sm">Artiest:</span>
                                   <span className="text-white font-semibold">{selectedQuestion.question.artist}</span>
                                 </div>
-                                {selectedQuestion.question.spotifyAlbumName && (
+                                {/* {selectedQuestion.question.spotifyAlbumName && (
                                   <div className="flex items-center justify-between">
                                     <span className="text-slate-400 text-sm">Album:</span>
                                     <span className="text-white font-medium">{selectedQuestion.question.spotifyAlbumName}</span>
                                   </div>
-                                )}
+                                )} */}
                               </div>
                             </div>
                           </div>
@@ -861,7 +859,6 @@ export default function GameBoard({
                       {showAnswer && hideAnswer && (
                         <div className="bg-slate-600/20 border border-slate-500 rounded-lg p-4 max-w-md">
                           <div className="flex items-center justify-between">
-                            <h4 className="text-lg font-bold text-slate-400">Song informatie verborgen</h4>
                             <Button
                               size="sm"
                               variant="ghost"
@@ -877,7 +874,7 @@ export default function GameBoard({
                       {/* Scoring Mode Selection */}
                       {showAnswer && (
                         <div className="space-y-4">
-                          <h4 className="text-lg font-bold text-white">Wat hebben ze goed geraden?</h4>
+                          {/* <h4 className="text-lg font-bold text-white">Wat hebben ze goed geraden?</h4> */}
                           <div className="flex flex-col gap-3 max-w-md mx-auto">
                             <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
                               <div className="flex items-center gap-3">
@@ -966,9 +963,9 @@ export default function GameBoard({
                             </>
                           ) : (
                             <div className="w-full text-center">
-                              <p className="text-sm text-slate-400">
+                              {/* <p className="text-sm text-slate-400">
                                 Selecteer wat ze goed hebben geraden om punten toe te kennen
-                              </p>
+                              </p> */}
                             </div>
                           )}
                           <Button
