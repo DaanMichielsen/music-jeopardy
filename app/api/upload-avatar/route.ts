@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     // Emit WebSocket event for real-time updates
     try {
       // Get WebSocket server URL from environment
-      const websocketServerUrl = process.env.WEBSOCKET_SERVER_URL || 'http://localhost:3001'
+      const websocketServerUrl = process.env.WEBSOCKET_SERVER_URL || 'http://192.168.0.193:3001'
       
       // Send a direct HTTP request to the WebSocket server to emit the event
       const response = await fetch(`${websocketServerUrl}/emit`, {

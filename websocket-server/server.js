@@ -9,8 +9,10 @@ const NODE_ENV = process.env.NODE_ENV || 'development'
 const server = http.createServer()
 const io = new Server(server, {
   cors: {
-    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : "*",
-    methods: ["GET", "POST"]
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
   },
   transports: ['websocket'] // Only WebSocket, no polling
 })
@@ -21,16 +23,19 @@ global.io = io
 // Track buzzer state for each game
 const buzzerState = new Map()
 
-// Track game state for each game
+// Track game state for each game (new feature)
 const gameState = new Map()
 
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id)
+  console.log('=== SERVER: Client connected ===')
+  console.log('Socket ID:', socket.id)
+  console.log('Client address:', socket.handshake.address)
+  console.log('Client headers:', socket.handshake.headers.origin)
 
   // Join a game room
   socket.on('join-game', (gameId) => {
     socket.join(gameId)
-    console.log(`Socket ${socket.id} joined game ${gameId}`)
+    console.log(`=== SERVER: Socket ${socket.id} joined game ${gameId} ===`)
     
     // Initialize buzzer state for this game if it doesn't exist
     if (!buzzerState.has(gameId)) {
@@ -39,8 +44,10 @@ io.on('connection', (socket) => {
         firstBuzz: null,
         buzzedPlayers: new Set(),
         buzzStartTime: null,
-        buzzOrder: []
+        buzzOrder: [],
+        audioStartTime: null
       })
+      console.log(`=== SERVER: Initialized buzzer state for game ${gameId} ===`)
     }
 
     // Initialize game state for this game if it doesn't exist
@@ -52,12 +59,15 @@ io.on('connection', (socket) => {
         buzzOrder: [],
         scoreboard: []
       })
+      console.log(`=== SERVER: Initialized game state for game ${gameId} ===`)
     }
 
     // Send current game state to the new client
     const currentGameState = gameState.get(gameId)
     if (currentGameState) {
       socket.emit('game-state-update', currentGameState)
+      console.log(`=== SERVER: Sent current game state to new client for game ${gameId} ===`)
+      console.log('Game state data:', currentGameState)
     }
   })
 
@@ -73,20 +83,30 @@ io.on('connection', (socket) => {
     console.log(`Avatar updated for player ${data.playerId} in game ${data.gameId}`)
   })
 
-  // Handle game state updates (from game board)
+  // Handle game state updates (from game board) - NEW FEATURE
   socket.on('game-state-update', (data) => {
-    const gameId = socket.rooms.values().next().value
-    if (gameId && gameId !== socket.id) {
+    // Get game ID from the socket's rooms
+    const rooms = Array.from(socket.rooms.values())
+    const gameId = rooms.find(room => room !== socket.id)
+    
+    console.log(`Game state update received from socket ${socket.id} for game ${gameId}:`, data)
+    
+    if (gameId) {
+      // Store the game state
       gameState.set(gameId, data)
-      socket.to(gameId).emit('game-state-update', data)
-      console.log(`Game state updated for game ${gameId}`)
+      
+      // Send to all clients in the game room
+      io.to(gameId).emit('game-state-update', data)
+      console.log(`Game state broadcasted to all clients in game ${gameId}`)
     }
   })
 
-  // Handle buzz activation with timing (from game board)
-  socket.on('buzz-activated', (data) => {
-    const gameId = socket.rooms.values().next().value
-    if (gameId && gameId !== socket.id) {
+  // Handle buzzer enable (from game board) - NEW FEATURE
+  socket.on('enable-buzzer', (data) => {
+    const rooms = Array.from(socket.rooms.values())
+    const gameId = rooms.find(room => room !== socket.id)
+    
+    if (gameId) {
       const state = buzzerState.get(gameId)
       if (state) {
         state.isActive = true
@@ -94,20 +114,52 @@ io.on('connection', (socket) => {
         state.buzzedPlayers.clear()
         state.buzzStartTime = data.startTime
         state.buzzOrder = []
-        console.log(`Buzzer activated for game ${gameId} at ${data.startTime}`)
+        state.audioStartTime = null
+        console.log(`Buzzer enabled for game ${gameId} at ${data.startTime}`)
         
         // Update game state
         const gameStateData = gameState.get(gameId)
         if (gameStateData) {
-          gameStateData.isPlaying = true // This now means "question is active"
+          gameStateData.isPlaying = true
           gameStateData.buzzStartTime = data.startTime
           gameStateData.buzzOrder = []
           gameState.set(gameId, gameStateData)
         }
         
         // Notify all clients in the game
-        io.to(gameId).emit('buzz-activated', { startTime: data.startTime })
+        io.to(gameId).emit('buzzer-enabled', { startTime: data.startTime })
       }
+    }
+  })
+
+  // Handle audio start (from game board) - NEW FEATURE
+  socket.on('audio-started', (data) => {
+    const rooms = Array.from(socket.rooms.values())
+    const gameId = rooms.find(room => room !== socket.id)
+    
+    if (gameId) {
+      const state = buzzerState.get(gameId)
+      if (state) {
+        state.audioStartTime = Date.now()
+        console.log(`Audio started for game ${gameId} at ${state.audioStartTime}`)
+        
+        // Notify all clients that audio has started
+        io.to(gameId).emit('audio-started', { audioStartTime: state.audioStartTime })
+      }
+    }
+  })
+
+  // Handle buzzer activation (from game board)
+  socket.on('activate-buzzer', (gameId) => {
+    const state = buzzerState.get(gameId)
+    if (state) {
+      state.isActive = true
+      state.firstBuzz = null
+      state.buzzedPlayers.clear()
+      console.log(`Buzzer activated for game ${gameId}`)
+      
+      // Notify all clients in the game
+      io.to(gameId).emit('buzz-activated')
     }
   })
 
@@ -118,25 +170,14 @@ io.on('connection', (socket) => {
       state.isActive = false
       state.firstBuzz = null
       state.buzzedPlayers.clear()
-      state.buzzStartTime = null
-      state.buzzOrder = []
       console.log(`Buzzer deactivated for game ${gameId}`)
-      
-      // Update game state
-      const gameStateData = gameState.get(gameId)
-      if (gameStateData) {
-        gameStateData.isPlaying = false
-        gameStateData.buzzStartTime = null
-        gameStateData.buzzOrder = []
-        gameState.set(gameId, gameStateData)
-      }
       
       // Notify all clients in the game
       io.to(gameId).emit('buzz-deactivated')
     }
   })
 
-  // Handle buzz-in from players with client-side timing and 500ms delay validation
+  // Handle buzz-in from players with enhanced logic
   socket.on('buzz-in', (data) => {
     const { gameId, teamId, playerId, playerName, teamName, clientTimestamp, timeFromStart } = data
     const state = buzzerState.get(gameId)
@@ -153,17 +194,17 @@ io.on('connection', (socket) => {
       return
     }
 
-    // Check if buzz is after the 500ms delay period
-    const serverTime = Date.now()
-    const timeSinceActivation = serverTime - state.buzzStartTime
-    
-    if (timeSinceActivation < 500) {
-      // Too early, ignore the buzz
-      socket.emit('buzz-failed', { playerId, reason: 'Too early' })
-      return
+    // Check if audio has started and if buzz is after 500ms from audio start
+    if (state.audioStartTime) {
+      const timeSinceAudioStart = Date.now() - state.audioStartTime
+      if (timeSinceAudioStart < 500) {
+        // Too early, ignore the buzz
+        socket.emit('buzz-failed', { playerId, reason: 'Too early' })
+        return
+      }
     }
 
-    // Record the buzz with client timing
+    // Record the buzz
     state.buzzedPlayers.add(playerId)
     
     const buzzData = {
@@ -171,16 +212,15 @@ io.on('connection', (socket) => {
       playerId,
       playerName,
       teamName,
-      timestamp: serverTime,
+      timestamp: Date.now(),
       clientTime: clientTimestamp,
-      timeFromStart: timeFromStart,
-      serverTimeFromStart: timeSinceActivation
+      timeFromStart: timeFromStart
     }
     
     if (!state.firstBuzz) {
       // First to buzz!
       state.firstBuzz = buzzData
-      console.log(`First buzz in game ${gameId}: ${playerName} from ${teamName} at ${timeFromStart}ms (server: ${timeSinceActivation}ms)`)
+      console.log(`First buzz in game ${gameId}: ${playerName} from ${teamName}`)
       
       // Notify the first buzzer
       socket.emit('buzz-success', { playerId, isFirst: true, clientTime: timeFromStart })
@@ -190,13 +230,17 @@ io.on('connection', (socket) => {
       
       // Notify game board of first buzz
       io.to(gameId).emit('first-buzz', buzzData)
+      
+      // Disable buzzer for all clients
+      io.to(gameId).emit('buzzer-disabled', { reason: 'First buzz received' })
+      state.isActive = false
     } else {
       // Not first, but still recorded
-      console.log(`Buzz in game ${gameId}: ${playerName} from ${teamName} at ${timeFromStart}ms (server: ${timeSinceActivation}ms) - not first`)
+      console.log(`Buzz in game ${gameId}: ${playerName} from ${teamName} (not first)`)
       socket.emit('buzz-success', { playerId, isFirst: false })
     }
     
-    // Add to buzz order (sorted by client time for fairness)
+    // Add to buzz order
     state.buzzOrder.push(buzzData)
     state.buzzOrder.sort((a, b) => a.timeFromStart - b.timeFromStart)
     
@@ -221,6 +265,7 @@ io.on('connection', (socket) => {
       state.buzzedPlayers.clear()
       state.buzzStartTime = null
       state.buzzOrder = []
+      state.audioStartTime = null
       console.log(`Buzzer reset for game ${gameId}`)
       
       // Update game state
@@ -237,8 +282,21 @@ io.on('connection', (socket) => {
     }
   })
 
+  // Simple ping-pong test for connection verification
+  socket.on('ping', (data) => {
+    console.log(`Ping received from ${socket.id}:`, data)
+    socket.emit('pong', { 
+      message: 'Server received your ping!',
+      timestamp: Date.now(),
+      socketId: socket.id,
+      ...data
+    })
+  })
+
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id)
+    console.log('=== SERVER: Client disconnected ===')
+    console.log('Socket ID:', socket.id)
+    console.log('Reason:', socket.disconnectReason)
   })
 })
 
@@ -269,9 +327,6 @@ server.on('request', (req, res) => {
         } else if (event === 'game-state-update' && data.gameId) {
           io.to(data.gameId).emit('game-state-update', data)
           console.log(`Game state updated for game ${data.gameId}`)
-        } else if (event === 'buzz-activated' && data.gameId) {
-          io.to(data.gameId).emit('buzz-activated', data)
-          console.log(`Buzzer activated for game ${data.gameId}`)
         }
         
         res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -318,6 +373,6 @@ server.listen(PORT, '0.0.0.0', () => {
     })
   }
   
-  console.log(`\nHealth check: http://localhost:${PORT}/health`)
-  console.log(`WebSocket endpoint: ws://localhost:${PORT}`)
+  console.log(`\nHealth check: http://192.168.0.193:${PORT}/health`)
+  console.log(`WebSocket endpoint: ws://192.168.0.193:${PORT}`)
 }) 

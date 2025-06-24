@@ -33,7 +33,7 @@ console.log('');
 
 // Start socket server
 console.log('🔌 Starting WebSocket server...');
-const socketServer = spawn('node', ['scripts/start-socket-server.js'], {
+const socketServer = spawn('node', ['websocket-server/server.js'], {
   stdio: 'inherit',
   shell: true
 });
@@ -45,7 +45,7 @@ setTimeout(() => {
   console.log('🔗 Buzzer QR codes will work on any device on your network');
   console.log('');
   
-  const nextServer = spawn('pnpm', ['dev'], {
+  const nextServer = spawn('npm', ['run', 'dev'], {
     stdio: 'inherit',
     shell: true,
     env: {

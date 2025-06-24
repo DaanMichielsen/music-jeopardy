@@ -28,9 +28,9 @@ const nextConfig = {
   },
   env: {
     // Environment variables for WebSocket and API URLs
-    NEXT_PUBLIC_WEBSOCKET_URL: process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:3001',
-    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000',
-    WEBSOCKET_SERVER_URL: process.env.WEBSOCKET_SERVER_URL || 'http://localhost:3001',
+    NEXT_PUBLIC_WEBSOCKET_URL: process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://192.168.0.193:3001',
+    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://192.168.0.193:3000',
+    WEBSOCKET_SERVER_URL: process.env.WEBSOCKET_SERVER_URL || 'http://192.168.0.193:3001',
   },
   webpack: (config, { isServer }) => {
     return config;

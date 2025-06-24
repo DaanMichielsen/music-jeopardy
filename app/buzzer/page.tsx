@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Music, Users, Crown, Zap, Upload, Wifi, WifiOff, Eye, Trophy, Clock } from "lucide-react"
 import { getGameState } from "@/app/actions"
 import { io, Socket } from 'socket.io-client'
+import { getSocketConfig } from '@/lib/socket-config'
 
 interface GameState {
   id?: string
@@ -47,6 +48,7 @@ interface LiveGameState {
   } | null
   isPlaying: boolean
   buzzStartTime: number | null
+  audioStartTime: number | null
   buzzOrder: Array<{
     playerId: string
     playerName: string
@@ -72,6 +74,7 @@ function BuzzerPageContent() {
     currentQuestion: null,
     isPlaying: false,
     buzzStartTime: null,
+    audioStartTime: null,
     buzzOrder: [],
     scoreboard: []
   })
@@ -103,30 +106,71 @@ function BuzzerPageContent() {
     loadGameState()
 
     // Connect to socket
-    const socketUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:3001'
-    const socket = io(socketUrl, {
-      transports: ['websocket']
+    const socketConfig = getSocketConfig()
+    console.log('=== BUZZER: Socket configuration ===')
+    console.log('URL:', socketConfig.url)
+    console.log('Transports:', socketConfig.transports)
+    console.log('Game ID:', gameId)
+    
+    const socket = io(socketConfig.url, {
+      transports: socketConfig.transports,
+      secure: false,
+      rejectUnauthorized: false,
+      timeout: 10000, // 10 second timeout
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
     })
 
     socket.on('connect', () => {
-      console.log('Connected to buzzer socket')
+      console.log('=== BUZZER: Connected to buzzer socket ===')
+      console.log('Socket ID:', socket.id)
+      console.log('Game ID:', gameId)
+      setIsConnected(true)
+      socket.emit('join-game', gameId)
+      console.log('=== BUZZER: Join game event sent ===')
+    })
+
+    socket.on('disconnect', () => {
+      console.log('=== BUZZER: Disconnected from buzzer socket ===')
+      setIsConnected(false)
+    })
+
+    socket.on('connect_error', (error) => {
+      console.log('=== BUZZER: Connection error ===')
+      console.log('Error:', error)
+      console.log('Error message:', error.message)
+      setIsConnected(false)
+    })
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.log('=== BUZZER: Reconnected after', attemptNumber, 'attempts ===')
       setIsConnected(true)
       socket.emit('join-game', gameId)
     })
 
-    socket.on('disconnect', () => {
-      console.log('Disconnected from buzzer socket')
-      setIsConnected(false)
+    socket.on('reconnect_error', (error) => {
+      console.log('=== BUZZER: Reconnection error ===')
+      console.log('Error:', error)
+    })
+
+    // Ping-pong test for connection verification
+    socket.on('pong', (data) => {
+      console.log('=== BUZZER: Pong received from server ===')
+      console.log('Pong data:', data)
     })
 
     // Live game state updates
     socket.on('game-state-update', (data: LiveGameState) => {
-      console.log('Game state update received:', data)
+      console.log('=== BUZZER: Game state update received ===')
+      console.log('Data:', data)
+      console.log('Current liveGameState before update:', liveGameState)
       setLiveGameState(data)
+      console.log('=== BUZZER: Game state update processed ===')
     })
 
-    socket.on('buzz-activated', (data: { startTime: number }) => {
-      console.log('Buzz activated at:', data.startTime)
+    socket.on('buzzer-enabled', (data: { startTime: number }) => {
+      console.log('Buzzer enabled at:', data.startTime)
       setLiveGameState(prev => ({
         ...prev,
         buzzStartTime: data.startTime,
@@ -136,7 +180,20 @@ function BuzzerPageContent() {
       setBuzzedIn(false)
       setBuzzDisabled(false)
       setClientBuzzTime(null)
-      setCountdown(500) // Start 500ms countdown
+      setCountdown(null)
+    })
+
+    socket.on('audio-started', (data: { audioStartTime: number }) => {
+      console.log('Audio started at:', data.audioStartTime)
+      setLiveGameState(prev => ({
+        ...prev,
+        audioStartTime: data.audioStartTime
+      }))
+    })
+
+    socket.on('buzzer-disabled', (data: { reason: string }) => {
+      console.log('Buzzer disabled:', data.reason)
+      setBuzzDisabled(true)
     })
 
     socket.on('buzz-reset', () => {
@@ -184,17 +241,22 @@ function BuzzerPageContent() {
 
   // Real-time countdown effect
   useEffect(() => {
-    if (countdown === null || countdown <= 0) return
+    if (!liveGameState.audioStartTime) return
 
     const timer = setInterval(() => {
-      setCountdown(prev => {
-        if (prev === null || prev <= 0) return null
-        return prev - 100
-      })
+      const timeSinceAudioStart = Date.now() - liveGameState.audioStartTime!
+      const timeRemaining = Math.max(0, 500 - timeSinceAudioStart)
+      
+      if (timeRemaining <= 0) {
+        setCountdown(null)
+        return
+      }
+      
+      setCountdown(timeRemaining)
     }, 100)
 
     return () => clearInterval(timer)
-  }, [countdown])
+  }, [liveGameState.audioStartTime])
 
   const handleBuzzIn = () => {
     if (!socket || !selectedPlayer || !selectedTeam || buzzDisabled) return
@@ -221,11 +283,56 @@ function BuzzerPageContent() {
 
   const handleAvatarUpload = async (playerId: string) => {
     // Create upload URL for this specific player
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000'
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://192.168.0.193:3000'
     const uploadUrl = `${apiBaseUrl}/upload-avatar?gameId=${gameId}&playerId=${playerId}`
     
     // Open upload page in new tab
     window.open(uploadUrl, '_blank')
+  }
+
+  const testConnection = () => {
+    if (socket) {
+      console.log('=== BUZZER: Sending ping to server ===')
+      socket.emit('ping', { 
+        client: 'buzzer',
+        gameId: gameId,
+        timestamp: Date.now()
+      })
+    } else {
+      console.log('=== BUZZER: No socket available for ping test ===')
+    }
+  }
+
+  const testWebSocketDirectly = () => {
+    console.log('=== BUZZER: Testing direct WebSocket connection ===')
+    const testSocket = new WebSocket('ws://192.168.0.193:3001')
+    
+    testSocket.onopen = () => {
+      console.log('=== BUZZER: Direct WebSocket connection successful ===')
+      testSocket.close()
+    }
+    
+    testSocket.onerror = (error) => {
+      console.log('=== BUZZER: Direct WebSocket connection failed ===')
+      console.log('Error:', error)
+    }
+    
+    testSocket.onclose = () => {
+      console.log('=== BUZZER: Direct WebSocket connection closed ===')
+    }
+  }
+
+  const testHealthCheck = async () => {
+    console.log('=== BUZZER: Testing server health check ===')
+    try {
+      const response = await fetch('http://192.168.0.193:3001/health')
+      const data = await response.json()
+      console.log('=== BUZZER: Health check successful ===')
+      console.log('Health data:', data)
+    } catch (error) {
+      console.log('=== BUZZER: Health check failed ===')
+      console.log('Error:', error)
+    }
   }
 
   const getPlayerInitials = (name: string) => {
@@ -247,8 +354,16 @@ function BuzzerPageContent() {
   const getBuzzStatus = () => {
     if (!liveGameState.buzzStartTime) return { canBuzz: false, message: 'Waiting for question...' }
     
-    // Use countdown if available, otherwise calculate from buzzStartTime
-    const timeRemaining = countdown !== null ? countdown : Math.max(0, 500 - (Date.now() - liveGameState.buzzStartTime))
+    if (!liveGameState.audioStartTime) {
+      return { 
+        canBuzz: false, 
+        message: 'Waiting for audio to start...',
+        timeRemaining: null
+      }
+    }
+    
+    // Use countdown if available, otherwise calculate
+    const timeRemaining = countdown !== null ? countdown : Math.max(0, 500 - (Date.now() - liveGameState.audioStartTime))
     
     if (timeRemaining > 0) {
       return { 
@@ -300,6 +415,30 @@ function BuzzerPageContent() {
             <span className={`text-sm ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
               {isConnected ? 'Verbonden' : 'Niet verbonden'}
             </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={testConnection}
+              className="ml-2 border-blue-500 text-blue-400 hover:bg-blue-500/10"
+            >
+              Test Connection
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={testWebSocketDirectly}
+              className="ml-2 border-green-500 text-green-400 hover:bg-green-500/10"
+            >
+              Test WebSocket
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={testHealthCheck}
+              className="ml-2 border-purple-500 text-purple-400 hover:bg-purple-500/10"
+            >
+              Health Check
+            </Button>
           </div>
         </div>
 

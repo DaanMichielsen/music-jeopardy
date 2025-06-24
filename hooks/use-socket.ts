@@ -25,7 +25,9 @@ export function useSocket(gameId: string | null) {
       timeout: 5000, // 5 second timeout
       reconnection: true,
       reconnectionAttempts: 5,
-      reconnectionDelay: 1000
+      reconnectionDelay: 1000,
+      secure: false,
+      rejectUnauthorized: false
     })
 
     socketRef.current = socket

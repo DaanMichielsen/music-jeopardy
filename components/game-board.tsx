@@ -88,6 +88,36 @@ export default function GameBoard({
   // WebSocket connection for buzzer functionality
   const { socket } = useSocket(gameId || null)
 
+  // Test connection function
+  const testConnection = () => {
+    if (socket) {
+      console.log('=== GAME BOARD: Sending ping to server ===')
+      socket.emit('ping', { 
+        client: 'game-board',
+        gameId: gameId,
+        timestamp: Date.now()
+      })
+    } else {
+      console.log('=== GAME BOARD: No socket available for ping test ===')
+    }
+  }
+
+  // Listen for pong responses
+  useEffect(() => {
+    if (!socket) return
+
+    const handlePong = (data: any) => {
+      console.log('=== GAME BOARD: Pong received from server ===')
+      console.log('Pong data:', data)
+    }
+
+    socket.on('pong', handlePong)
+
+    return () => {
+      socket.off('pong', handlePong)
+    }
+  }, [socket])
+
   const selectQuestion = (category: Category, question: Question) => {
     if (question.isAnswered) return
 
@@ -388,17 +418,54 @@ export default function GameBoard({
     }
   }, [sdkIsPlaying, isPlayingFullSong, fullTrackTimer])
 
-  // Send game state updates to buzzer clients
+  // Send audio-started event when audio begins playing
   useEffect(() => {
     if (!socket || !selectedQuestion) return
 
-    const gameStateUpdate = {
-      currentQuestion: {
+    // Send audio-started when audio begins playing
+    if ((isPlaying || isPlayingFullSong) && socket) {
+      socket.emit('audio-started', {})
+      console.log('Audio started event sent')
+    }
+  }, [socket, selectedQuestion, isPlaying, isPlayingFullSong])
+
+  // Send initial game state when component mounts
+  useEffect(() => {
+    if (!socket || !gameId) return
+
+    const initialGameState = {
+      currentQuestion: selectedQuestion ? {
         category: selectedQuestion.category.name,
         points: selectedQuestion.question.points,
         songName: selectedQuestion.question.songName,
         artist: selectedQuestion.question.artist
-      },
+      } : null,
+      isPlaying: !!selectedQuestion,
+      buzzStartTime: buzzStartTime,
+      buzzOrder: buzzOrder,
+      scoreboard: teams.map(team => ({
+        teamId: team.id,
+        teamName: team.name,
+        score: team.score,
+        color: team.color
+      }))
+    }
+
+    socket.emit('game-state-update', initialGameState)
+    console.log('Initial game state sent:', initialGameState)
+  }, [socket, gameId, teams]) // Send when socket connects or teams change
+
+  // Send game state updates to buzzer clients
+  useEffect(() => {
+    if (!socket) return
+
+    const gameStateUpdate = {
+      currentQuestion: selectedQuestion ? {
+        category: selectedQuestion.category.name,
+        points: selectedQuestion.question.points,
+        songName: selectedQuestion.question.songName,
+        artist: selectedQuestion.question.artist
+      } : null,
       isPlaying: !!selectedQuestion, // Question is active
       buzzStartTime: buzzStartTime,
       buzzOrder: buzzOrder,
@@ -410,22 +477,27 @@ export default function GameBoard({
       }))
     }
 
+    console.log('=== GAME BOARD: Sending game state update ===')
+    console.log('Socket connected:', !!socket)
+    console.log('Game state data:', gameStateUpdate)
+    console.log('Teams count:', teams.length)
+    console.log('Selected question:', selectedQuestion ? 'Yes' : 'No')
     socket.emit('game-state-update', gameStateUpdate)
-    console.log('Game state updated:', gameStateUpdate)
+    console.log('=== GAME BOARD: Game state update sent ===')
   }, [socket, selectedQuestion, buzzStartTime, buzzOrder, teams])
 
-  // Activate buzzer immediately when question is selected
+  // Enable buzzer immediately when question is selected
   useEffect(() => {
     if (!socket || !selectedQuestion) return
 
-    // Activate buzzer immediately when question is opened
+    // Enable buzzer immediately when question is opened
     const startTime = Date.now()
     setBuzzStartTime(startTime)
     buzzStartTimeRef.current = startTime
     
-    // Send buzz activation to all buzzer clients
-    socket.emit('buzz-activated', { startTime })
-    console.log('Buzzer activated immediately for question at:', startTime)
+    // Send buzzer enable to all buzzer clients
+    socket.emit('enable-buzzer', { startTime })
+    console.log('Buzzer enabled immediately for question at:', startTime)
   }, [socket, selectedQuestion?.question.id]) // Only trigger when question ID changes
 
   // Cleanup timer when component unmounts or question changes
@@ -520,8 +592,8 @@ export default function GameBoard({
         const port = '3000' // Next.js server port
         
         // If we're on localhost, use localhost for buzzer too
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-          return `http://localhost:${port}/buzzer?gameId=${gameId}`
+        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '192.168.0.193') {
+          return `http://192.168.0.193:${port}/buzzer?gameId=${gameId}`
         }
         
         // Otherwise use the same hostname as the current page
@@ -529,7 +601,7 @@ export default function GameBoard({
       }
       
       // Fallback for server-side rendering
-      return `http://localhost:3000/buzzer?gameId=${gameId}`
+      return `http://192.168.0.193:3000/buzzer?gameId=${gameId}`
     }
     
     const buzzerUrl = getBuzzerUrl()
@@ -553,6 +625,7 @@ export default function GameBoard({
   }
 
   const markQuestionAnswered = () => {
+    console.log('markQuestionAnswered called with selectedQuestion:', selectedQuestion)
     if (selectedQuestion) {
       // Clear the stop timer
       if (stopTimer) {
@@ -569,16 +642,31 @@ export default function GameBoard({
       setShowBuzzFeed(false)
       setShowScoreboard(false)
 
-      const updatedCategories = categories.map((category) =>
-        category.id === selectedQuestion.category.id
-          ? {
-              ...category,
-              questions: category.questions.map((question) =>
-                question.id === selectedQuestion.question.id ? { ...question, isAnswered: true } : question,
-              ),
+      console.log('Current categories before update:', categories)
+      console.log('Looking for category:', selectedQuestion.category.id)
+      console.log('Looking for question:', selectedQuestion.question.id)
+
+      const updatedCategories = categories.map((category) => {
+        console.log('Checking category:', category.id, 'vs', selectedQuestion.category.id)
+        if (category.id === selectedQuestion.category.id) {
+          console.log('Found matching category, updating questions')
+          const updatedQuestions = category.questions.map((question) => {
+            console.log('Checking question:', question.id, 'vs', selectedQuestion.question.id)
+            if (question.id === selectedQuestion.question.id) {
+              console.log('Found matching question, marking as answered')
+              return { ...question, isAnswered: true }
             }
-          : category,
-      )
+            return question
+          })
+          return {
+            ...category,
+            questions: updatedQuestions
+          }
+        }
+        return category
+      })
+      
+      console.log('Updated categories:', updatedCategories)
       onCategoriesChange(updatedCategories)
       setSelectedQuestion(null)
       setShowAnswer(false)
@@ -588,6 +676,8 @@ export default function GameBoard({
       setIsFlipped(false)
       setSongTeamId(null)
       setArtistTeamId(null)
+    } else {
+      console.log('markQuestionAnswered called but no selectedQuestion')
     }
   }
 
@@ -595,6 +685,8 @@ export default function GameBoard({
     if (selectedQuestion) {
       let updatedTeams = [...teams]
       let pointsAwarded = 0
+      let newSongTeamId = songTeamId
+      let newArtistTeamId = artistTeamId
       
       // Award song points if correct and not already awarded
       if (songCorrect && songTeamId === null) {
@@ -602,7 +694,7 @@ export default function GameBoard({
         updatedTeams = updatedTeams.map((team) =>
           team.id === teamId ? { ...team, score: team.score + songPoints } : team,
         )
-        setSongTeamId(teamId)
+        newSongTeamId = teamId
         pointsAwarded += songPoints
       }
       
@@ -612,7 +704,7 @@ export default function GameBoard({
         updatedTeams = updatedTeams.map((team) =>
           team.id === teamId ? { ...team, score: team.score + artistPoints } : team,
         )
-        setArtistTeamId(teamId)
+        newArtistTeamId = teamId
         pointsAwarded += artistPoints
       }
       
@@ -621,18 +713,52 @@ export default function GameBoard({
         onTeamsChange(updatedTeams)
       }
       
-      // Check if all available points have been awarded
-      const songAwarded = songCorrect && songTeamId !== null
-      const artistAwarded = artistCorrect && artistTeamId !== null
+      // Update the team IDs for the check
+      setSongTeamId(newSongTeamId)
+      setArtistTeamId(newArtistTeamId)
       
-      if (songAwarded && artistAwarded) {
-        // All points awarded, close the question
-        markQuestionAnswered()
-      } else if (!songCorrect && !artistCorrect) {
-        // No correct answers, just close the question
-        closeQuestion()
+      // Check if all available points have been awarded using the NEW values
+      const songAwarded = songCorrect && newSongTeamId !== null
+      const artistAwarded = artistCorrect && newArtistTeamId !== null
+      
+      console.log('Points awarded check:', {
+        songCorrect,
+        artistCorrect,
+        newSongTeamId,
+        newArtistTeamId,
+        songAwarded,
+        artistAwarded,
+        pointsAwarded
+      })
+      
+      // Determine if all available points have been awarded
+      let allPointsAwarded = false
+      
+      if (songCorrect && artistCorrect) {
+        // Both song and artist are correct - need both points awarded
+        allPointsAwarded = songAwarded && artistAwarded
+      } else if (songCorrect && !artistCorrect) {
+        // Only song is correct - need song points awarded
+        allPointsAwarded = songAwarded
+      } else if (!songCorrect && artistCorrect) {
+        // Only artist is correct - need artist points awarded
+        allPointsAwarded = artistAwarded
+      } else {
+        // Neither is correct - no points to award, close immediately
+        allPointsAwarded = true
       }
-      // If some points are still available, keep the question open
+      
+      // Close question if all available points are awarded
+      if (allPointsAwarded) {
+        console.log('All available points awarded, closing question')
+        console.log('Calling markQuestionAnswered...')
+        markQuestionAnswered()
+        console.log('markQuestionAnswered called successfully')
+      } else {
+        console.log('Not all points awarded yet, keeping question open')
+        console.log('Song correct:', songCorrect, 'Artist correct:', artistCorrect)
+        console.log('Song awarded:', songAwarded, 'Artist awarded:', artistAwarded)
+      }
     }
   }
 
@@ -677,6 +803,14 @@ export default function GameBoard({
             >
               <QrCode className="h-4 w-4 mr-2" />
               Buzzer QR
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={testConnection} 
+              size="sm" 
+              className="border-green-500 text-green-400 hover:bg-green-500/10"
+            >
+              Test Socket
             </Button>
           </div>
         </div>
