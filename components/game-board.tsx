@@ -88,17 +88,24 @@ export default function GameBoard({
   // WebSocket connection for buzzer functionality
   const { socket } = useSocket(gameId || null)
 
+  // Development mode check
+  const isDevelopment = process.env.NODE_ENV === 'development'
+
   // Test connection function
   const testConnection = () => {
     if (socket) {
-      console.log('=== GAME BOARD: Sending ping to server ===')
+      if (isDevelopment) {
+        console.log('=== GAME BOARD: Sending ping to server ===')
+      }
       socket.emit('ping', { 
         client: 'game-board',
         gameId: gameId,
         timestamp: Date.now()
       })
     } else {
-      console.log('=== GAME BOARD: No socket available for ping test ===')
+      if (isDevelopment) {
+        console.log('=== GAME BOARD: No socket available for ping test ===')
+      }
     }
   }
 
@@ -107,8 +114,10 @@ export default function GameBoard({
     if (!socket) return
 
     const handlePong = (data: any) => {
-      console.log('=== GAME BOARD: Pong received from server ===')
-      console.log('Pong data:', data)
+      if (isDevelopment) {
+        console.log('=== GAME BOARD: Pong received from server ===')
+        console.log('Pong data:', data)
+      }
     }
 
     socket.on('pong', handlePong)
@@ -116,7 +125,7 @@ export default function GameBoard({
     return () => {
       socket.off('pong', handlePong)
     }
-  }, [socket])
+  }, [socket, isDevelopment])
 
   const selectQuestion = (category: Category, question: Question) => {
     if (question.isAnswered) return
@@ -477,13 +486,17 @@ export default function GameBoard({
       }))
     }
 
-    console.log('=== GAME BOARD: Sending game state update ===')
-    console.log('Socket connected:', !!socket)
-    console.log('Game state data:', gameStateUpdate)
-    console.log('Teams count:', teams.length)
-    console.log('Selected question:', selectedQuestion ? 'Yes' : 'No')
+    if (isDevelopment) {
+      console.log('=== GAME BOARD: Sending game state update ===')
+      console.log('Socket connected:', !!socket)
+      console.log('Game state data:', gameStateUpdate)
+      console.log('Teams count:', teams.length)
+      console.log('Selected question:', selectedQuestion ? 'Yes' : 'No')
+    }
     socket.emit('game-state-update', gameStateUpdate)
-    console.log('=== GAME BOARD: Game state update sent ===')
+    if (isDevelopment) {
+      console.log('=== GAME BOARD: Game state update sent ===')
+    }
   }, [socket, selectedQuestion, buzzStartTime, buzzOrder, teams])
 
   // Enable buzzer immediately when question is selected
@@ -497,7 +510,9 @@ export default function GameBoard({
     
     // Send buzzer enable to all buzzer clients
     socket.emit('enable-buzzer', { startTime })
-    console.log('Buzzer enabled immediately for question at:', startTime)
+    if (isDevelopment) {
+      console.log('Buzzer enabled immediately for question at:', startTime)
+    }
   }, [socket, selectedQuestion?.question.id]) // Only trigger when question ID changes
 
   // Cleanup timer when component unmounts or question changes
@@ -519,13 +534,17 @@ export default function GameBoard({
     if (!socket) return
 
     const handleFirstBuzz = (data: any) => {
-      console.log('First buzz received:', data)
+      if (isDevelopment) {
+        console.log('First buzz received:', data)
+      }
       setFirstBuzz(data)
       setBuzzOrder(prev => [...prev, data])
     }
 
     const handleBuzzReceived = (data: any) => {
-      console.log('Buzz received:', data)
+      if (isDevelopment) {
+        console.log('Buzz received:', data)
+      }
       setBuzzOrder(prev => [...prev, data])
     }
 
@@ -540,11 +559,15 @@ export default function GameBoard({
 
   const activateBuzzer = () => {
     if (!socket || !gameId) {
-      console.log('Cannot activate buzzer:', { socket: !!socket, gameId })
+      if (isDevelopment) {
+        console.log('Cannot activate buzzer:', { socket: !!socket, gameId })
+      }
       return
     }
     
-    console.log('Activating buzzer for game:', gameId)
+    if (isDevelopment) {
+      console.log('Activating buzzer for game:', gameId)
+    }
     setBuzzerActive(true)
     setFirstBuzz(null)
     setBuzzOrder([])
@@ -553,7 +576,9 @@ export default function GameBoard({
     setBuzzStartTime(null)
     buzzStartTimeRef.current = null
     socket.emit('activate-buzzer', gameId)
-    console.log('Buzzer activated')
+    if (isDevelopment) {
+      console.log('Buzzer activated')
+    }
   }
 
   const deactivateBuzzer = () => {
@@ -561,7 +586,9 @@ export default function GameBoard({
     
     setBuzzerActive(false)
     socket.emit('deactivate-buzzer', gameId)
-    console.log('Buzzer deactivated')
+    if (isDevelopment) {
+      console.log('Buzzer deactivated')
+    }
   }
 
   const showBuzzOrderList = () => {
@@ -579,7 +606,9 @@ export default function GameBoard({
     setBuzzStartTime(null)
     buzzStartTimeRef.current = null
     socket.emit('reset-buzzer', gameId)
-    console.log('Buzzer reset')
+    if (isDevelopment) {
+      console.log('Buzzer reset')
+    }
   }
 
   const showBuzzerQRCode = async () => {
@@ -625,7 +654,9 @@ export default function GameBoard({
   }
 
   const markQuestionAnswered = () => {
-    console.log('markQuestionAnswered called with selectedQuestion:', selectedQuestion)
+    if (isDevelopment) {
+      console.log('markQuestionAnswered called with selectedQuestion:', selectedQuestion)
+    }
     if (selectedQuestion) {
       // Clear the stop timer
       if (stopTimer) {
@@ -642,18 +673,28 @@ export default function GameBoard({
       setShowBuzzFeed(false)
       setShowScoreboard(false)
 
-      console.log('Current categories before update:', categories)
-      console.log('Looking for category:', selectedQuestion.category.id)
-      console.log('Looking for question:', selectedQuestion.question.id)
+      if (isDevelopment) {
+        console.log('Current categories before update:', categories)
+        console.log('Looking for category:', selectedQuestion.category.id)
+        console.log('Looking for question:', selectedQuestion.question.id)
+      }
 
       const updatedCategories = categories.map((category) => {
-        console.log('Checking category:', category.id, 'vs', selectedQuestion.category.id)
+        if (isDevelopment) {
+          console.log('Checking category:', category.id, 'vs', selectedQuestion.category.id)
+        }
         if (category.id === selectedQuestion.category.id) {
-          console.log('Found matching category, updating questions')
+          if (isDevelopment) {
+            console.log('Found matching category, updating questions')
+          }
           const updatedQuestions = category.questions.map((question) => {
-            console.log('Checking question:', question.id, 'vs', selectedQuestion.question.id)
+            if (isDevelopment) {
+              console.log('Checking question:', question.id, 'vs', selectedQuestion.question.id)
+            }
             if (question.id === selectedQuestion.question.id) {
-              console.log('Found matching question, marking as answered')
+              if (isDevelopment) {
+                console.log('Found matching question, marking as answered')
+              }
               return { ...question, isAnswered: true }
             }
             return question
@@ -666,7 +707,9 @@ export default function GameBoard({
         return category
       })
       
-      console.log('Updated categories:', updatedCategories)
+      if (isDevelopment) {
+        console.log('Updated categories:', updatedCategories)
+      }
       onCategoriesChange(updatedCategories)
       setSelectedQuestion(null)
       setShowAnswer(false)
@@ -804,14 +847,16 @@ export default function GameBoard({
               <QrCode className="h-4 w-4 mr-2" />
               Buzzer QR
             </Button>
-            <Button 
-              variant="outline" 
-              onClick={testConnection} 
-              size="sm" 
-              className="border-green-500 text-green-400 hover:bg-green-500/10"
-            >
-              Test Socket
-            </Button>
+            {isDevelopment && (
+              <Button 
+                variant="outline" 
+                onClick={testConnection} 
+                size="sm" 
+                className="border-green-500 text-green-400 hover:bg-green-500/10"
+              >
+                Test Socket
+              </Button>
+            )}
           </div>
         </div>
         
