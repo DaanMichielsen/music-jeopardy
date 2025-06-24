@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Music, Users, Crown, Zap, Upload, Wifi, WifiOff } from "lucide-react"
+import { Music, Users, Crown, Zap, Upload, Wifi, WifiOff, Eye, Trophy, Clock } from "lucide-react"
 import { getGameState } from "@/app/actions"
 import { io, Socket } from 'socket.io-client'
 
@@ -38,11 +38,43 @@ interface GameState {
   categories: any[]
 }
 
+interface LiveGameState {
+  currentQuestion: {
+    category: string
+    points: number
+    songName: string
+    artist: string
+  } | null
+  isPlaying: boolean
+  buzzStartTime: number | null
+  buzzOrder: Array<{
+    playerId: string
+    playerName: string
+    teamName: string
+    timestamp: number
+    clientTime: number
+    timeFromStart: number
+  }>
+  scoreboard: Array<{
+    teamId: string
+    teamName: string
+    score: number
+    color: string
+  }>
+}
+
 function BuzzerPageContent() {
   const searchParams = useSearchParams()
   const gameId = searchParams.get('gameId')
   
   const [gameState, setGameState] = useState<GameState | null>(null)
+  const [liveGameState, setLiveGameState] = useState<LiveGameState>({
+    currentQuestion: null,
+    isPlaying: false,
+    buzzStartTime: null,
+    buzzOrder: [],
+    scoreboard: []
+  })
   const [selectedTeam, setSelectedTeam] = useState<any>(null)
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -50,6 +82,8 @@ function BuzzerPageContent() {
   const [buzzedIn, setBuzzedIn] = useState(false)
   const [buzzDisabled, setBuzzDisabled] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [clientBuzzTime, setClientBuzzTime] = useState<number | null>(null)
+  const [countdown, setCountdown] = useState<number | null>(null)
 
   useEffect(() => {
     if (!gameId) return
@@ -85,16 +119,45 @@ function BuzzerPageContent() {
       setIsConnected(false)
     })
 
-    socket.on('buzz-reset', () => {
-      console.log('Buzz reset received')
+    // Live game state updates
+    socket.on('game-state-update', (data: LiveGameState) => {
+      console.log('Game state update received:', data)
+      setLiveGameState(data)
+    })
+
+    socket.on('buzz-activated', (data: { startTime: number }) => {
+      console.log('Buzz activated at:', data.startTime)
+      setLiveGameState(prev => ({
+        ...prev,
+        buzzStartTime: data.startTime,
+        isPlaying: true,
+        buzzOrder: []
+      }))
       setBuzzedIn(false)
       setBuzzDisabled(false)
+      setClientBuzzTime(null)
+      setCountdown(500) // Start 500ms countdown
+    })
+
+    socket.on('buzz-reset', () => {
+      console.log('Buzz reset received')
+      setLiveGameState(prev => ({
+        ...prev,
+        buzzStartTime: null,
+        isPlaying: false,
+        buzzOrder: []
+      }))
+      setBuzzedIn(false)
+      setBuzzDisabled(false)
+      setClientBuzzTime(null)
+      setCountdown(null)
     })
 
     socket.on('buzz-success', (data) => {
       if (data.playerId === selectedPlayer?.id) {
         setBuzzedIn(true)
         setBuzzDisabled(true)
+        setClientBuzzTime(data.clientTime)
       }
     })
 
@@ -105,22 +168,54 @@ function BuzzerPageContent() {
       }
     })
 
+    socket.on('buzz-order-update', (data: { buzzOrder: any[] }) => {
+      setLiveGameState(prev => ({
+        ...prev,
+        buzzOrder: data.buzzOrder
+      }))
+    })
+
     setSocket(socket)
 
     return () => {
       socket.disconnect()
     }
-  }, [gameId])
+  }, [gameId, selectedPlayer?.id])
+
+  // Real-time countdown effect
+  useEffect(() => {
+    if (countdown === null || countdown <= 0) return
+
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev === null || prev <= 0) return null
+        return prev - 100
+      })
+    }, 100)
+
+    return () => clearInterval(timer)
+  }, [countdown])
 
   const handleBuzzIn = () => {
     if (!socket || !selectedPlayer || !selectedTeam || buzzDisabled) return
+
+    const clientTimestamp = Date.now()
+    const timeFromStart = liveGameState.buzzStartTime ? clientTimestamp - liveGameState.buzzStartTime : 0
+
+    console.log('Buzz attempt:', {
+      clientTimestamp,
+      buzzStartTime: liveGameState.buzzStartTime,
+      timeFromStart
+    })
 
     socket.emit('buzz-in', {
       gameId,
       teamId: selectedTeam.id,
       playerId: selectedPlayer.id,
       playerName: selectedPlayer.name,
-      teamName: selectedTeam.name
+      teamName: selectedTeam.name,
+      clientTimestamp,
+      timeFromStart
     })
   }
 
@@ -135,6 +230,35 @@ function BuzzerPageContent() {
 
   const getPlayerInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+  }
+
+  const formatTime = (ms: number) => {
+    if (ms < 1000) {
+      return `${ms}ms`
+    } else if (ms < 60000) {
+      return `${(ms / 1000).toFixed(1)}s`
+    } else {
+      const minutes = Math.floor(ms / 60000)
+      const seconds = Math.floor((ms % 60000) / 1000)
+      return `${minutes}m ${seconds}s`
+    }
+  }
+
+  const getBuzzStatus = () => {
+    if (!liveGameState.buzzStartTime) return { canBuzz: false, message: 'Waiting for question...' }
+    
+    // Use countdown if available, otherwise calculate from buzzStartTime
+    const timeRemaining = countdown !== null ? countdown : Math.max(0, 500 - (Date.now() - liveGameState.buzzStartTime))
+    
+    if (timeRemaining > 0) {
+      return { 
+        canBuzz: false, 
+        message: `Wait ${formatTime(timeRemaining)}...`,
+        timeRemaining: timeRemaining
+      }
+    }
+    
+    return { canBuzz: true, message: 'Ready to buzz!' }
   }
 
   if (loading) {
@@ -159,8 +283,8 @@ function BuzzerPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br mt-16 from-slate-900 via-purple-900 to-slate-900 p-4">
-      <div className="max-w-md mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br pt-12 from-slate-900 via-purple-900 to-slate-900 p-4">
+      <div className="max-w-md mx-auto space-y-4">
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
@@ -178,6 +302,111 @@ function BuzzerPageContent() {
             </span>
           </div>
         </div>
+
+        {/* Live Game State */}
+        {liveGameState.currentQuestion && (
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-white text-lg flex items-center gap-2">
+                <Eye className="h-4 w-4 text-blue-400" />
+                Huidige vraag
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-sm">Categorie:</span>
+                <span className="text-white font-medium">{liveGameState.currentQuestion.category}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-sm">Punten:</span>
+                <Badge className="bg-yellow-600 text-white">
+                  ${liveGameState.currentQuestion.points}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-sm">Status:</span>
+                <span className={`text-sm font-medium ${liveGameState.currentQuestion ? 'text-green-400' : 'text-yellow-400'}`}>
+                  {liveGameState.currentQuestion ? 'Vraag actief' : 'Wacht op vraag'}
+                </span>
+              </div>
+              {liveGameState.buzzStartTime && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 text-sm">Start tijd:</span>
+                  <span className="text-white text-sm font-mono">
+                    {formatTime(Date.now() - liveGameState.buzzStartTime)}
+                  </span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Live Scoreboard */}
+        {liveGameState.scoreboard.length > 0 && (
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-white text-lg flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-yellow-400" />
+                Scorebord
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {liveGameState.scoreboard
+                .sort((a, b) => b.score - a.score)
+                .map((team, index) => (
+                <div key={team.teamId} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-bold ${
+                      index === 0 ? 'text-yellow-400' : 
+                      index === 1 ? 'text-slate-300' : 
+                      index === 2 ? 'text-orange-400' : 'text-slate-400'
+                    }`}>
+                      #{index + 1}
+                    </span>
+                    <span className="text-white text-sm">{team.teamName}</span>
+                  </div>
+                  <span className="text-white font-bold">{team.score}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Live Buzz Feed */}
+        {liveGameState.buzzOrder.length > 0 && (
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-white text-lg flex items-center gap-2">
+                <Zap className="h-4 w-4 text-yellow-400" />
+                Buzz volgorde
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 max-h-32 overflow-y-auto">
+              {liveGameState.buzzOrder.map((buzz, index) => (
+                <div key={buzz.playerId} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className={`font-bold ${
+                      index === 0 ? 'text-yellow-400' : 'text-slate-400'
+                    }`}>
+                      #{index + 1}
+                    </span>
+                    <span className={`${
+                      index === 0 ? 'text-yellow-400' : 'text-white'
+                    }`}>
+                      {buzz.playerName}
+                    </span>
+                    <span className="text-slate-400 text-xs">({buzz.teamName})</span>
+                  </div>
+                  <span className={`text-xs font-mono ${
+                    index === 0 ? 'text-yellow-400' : 'text-slate-400'
+                  }`}>
+                    {index === 0 ? 'FIRST' : formatTime(buzz.timeFromStart)}
+                  </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Team Selection */}
         {!selectedTeam && (
@@ -309,16 +538,20 @@ function BuzzerPageContent() {
                 Ready to Buzz In!
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-4">
               <div className="flex justify-center">
                 <Button
                   onClick={handleBuzzIn}
-                  disabled={!isConnected || buzzDisabled}
+                  disabled={!isConnected || buzzDisabled || !liveGameState.currentQuestion || !getBuzzStatus().canBuzz}
                   className={`w-32 h-32 rounded-full text-2xl font-bold shadow-lg transition-all ${
                     buzzedIn
                       ? 'bg-green-600 hover:bg-green-700 text-white shadow-green-500/50'
                       : buzzDisabled
                       ? 'bg-slate-600 text-slate-400 cursor-not-allowed shadow-none'
+                      : !liveGameState.currentQuestion
+                      ? 'bg-slate-600 text-slate-400 cursor-not-allowed shadow-none'
+                      : !getBuzzStatus().canBuzz
+                      ? 'bg-orange-600 text-white shadow-orange-500/50'
                       : 'bg-yellow-600 hover:bg-yellow-700 text-white shadow-yellow-500/50 hover:scale-105 active:scale-95'
                   }`}
                 >
@@ -331,6 +564,21 @@ function BuzzerPageContent() {
                     <>
                       <Zap className="h-8 w-8 mr-2" />
                       LATE
+                    </>
+                  ) : !liveGameState.currentQuestion ? (
+                    <>
+                      <Clock className="h-8 w-8 mr-2" />
+                      WAIT
+                    </>
+                  ) : !getBuzzStatus().canBuzz ? (
+                    <>
+                      <Clock className="h-8 w-8 mr-2" />
+                      {(() => {
+                        const status = getBuzzStatus()
+                        return status.timeRemaining && status.timeRemaining < 1000 ? 
+                          `${Math.ceil(status.timeRemaining / 100)}` : 
+                          'WAIT'
+                      })()}
                     </>
                   ) : (
                     <>
@@ -346,6 +594,11 @@ function BuzzerPageContent() {
                   <p className="text-sm text-green-400 font-semibold">
                     You were first! Wait for the host to call on you.
                   </p>
+                  {clientBuzzTime && (
+                    <p className="text-xs text-green-300 mt-1">
+                      Your time: {formatTime(clientBuzzTime)}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -353,6 +606,22 @@ function BuzzerPageContent() {
                 <div className="text-center">
                   <p className="text-sm text-slate-400">
                     Someone else buzzed in first.
+                  </p>
+                </div>
+              )}
+
+              {!liveGameState.currentQuestion && (
+                <div className="text-center">
+                  <p className="text-sm text-yellow-400">
+                    Waiting for host to select a question...
+                  </p>
+                </div>
+              )}
+
+              {liveGameState.currentQuestion && !buzzedIn && !buzzDisabled && (
+                <div className="text-center">
+                  <p className="text-sm text-blue-400">
+                    {getBuzzStatus().message}
                   </p>
                 </div>
               )}

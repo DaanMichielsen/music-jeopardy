@@ -20,6 +20,8 @@ import {
 import type { LyricsTranslationCategory, LyricsTranslationQuestion } from "@/types/game"
 import type { SpotifyTrack } from "@/types/game"
 import { useRouter } from "next/navigation"
+import { useSpotify } from '@/lib/spotify-context'
+import { SpotifyStatus } from '@/components/spotify-status'
 
 interface LyricsTranslationSetupProps {
   gameId: string
@@ -53,27 +55,14 @@ export default function LyricsTranslationSetup({ gameId, onBackToLobby, onStartG
 
   const router = useRouter()
 
+  const { isAuthenticated, getValidAccessToken } = useSpotify()
+
   useEffect(() => {
     loadCategories()
-
-    // Handle Spotify auth callback
-    const params = new URLSearchParams(window.location.hash.substring(1))
-    const accessToken = params.get("access_token")
-    const refreshToken = params.get("refresh_token")
-
-    if (accessToken) {
-      localStorage.setItem("spotify_access_token", accessToken)
-      if (refreshToken) {
-        localStorage.setItem("spotify_refresh_token", refreshToken)
-      }
-
-      // Clean up the URL
-      window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
-    }
   }, [])
 
-  // Check Spotify connection status directly from localStorage
-  const isSpotifyConnected = typeof window !== 'undefined' && !!localStorage.getItem('spotify_access_token')
+  // Check Spotify connection status using context
+  const isSpotifyConnected = isAuthenticated
 
   const loadCategories = async () => {
     try {
@@ -84,11 +73,6 @@ export default function LyricsTranslationSetup({ gameId, onBackToLobby, onStartG
     }
   }
 
-  const navigateToSpotifyAuth = () => {
-    sessionStorage.setItem("returnUrl", window.location.href);
-    router.push("/spotify-auth");
-  };
-
   const searchSpotify = async () => {
     if (!searchQuery.trim()) return;
 
@@ -97,10 +81,9 @@ export default function LyricsTranslationSetup({ gameId, onBackToLobby, onStartG
       return;
     }
 
-    const accessToken = localStorage.getItem("spotify_access_token");
+    const accessToken = await getValidAccessToken();
     if (!accessToken) {
       alert("Spotify token not found. Please re-authenticate.");
-      navigateToSpotifyAuth();
       return;
     }
 
@@ -342,30 +325,7 @@ export default function LyricsTranslationSetup({ gameId, onBackToLobby, onStartG
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="mb-8">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              {isSpotifyConnected ? (
-                <div className="flex items-center gap-2 text-green-400">
-                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                  <span className="text-sm">Spotify Connected</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 text-red-400">
-                    <div className="w-2 h-2 bg-red-400 rounded-full"></div>
-                    <span className="text-sm">Spotify Not Connected</span>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={navigateToSpotifyAuth}
-                    className="border-green-500 text-green-400 hover:bg-green-500/10"
-                  >
-                    <Music className="h-3 w-3 mr-1" />
-                    Connect
-                  </Button>
-                </div>
-              )}
-            </div>
+            <SpotifyStatus variant="compact" />
             <Button onClick={onBackToLobby} variant="outline" className="border-slate-600 text-slate-300">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Lobby

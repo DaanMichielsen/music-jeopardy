@@ -15,6 +15,8 @@ import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } 
 import { CSS } from '@dnd-kit/utilities'
 import { cn } from "@/lib/utils"
 import type { Category, Question, SpotifyTrack, AudioSnippet } from "../types/game"
+import { useSpotify } from '@/lib/spotify-context'
+import { SpotifyStatus } from '@/components/spotify-status'
 
 interface QuestionSetupProps {
   gameId: string
@@ -107,6 +109,8 @@ export default function QuestionSetup({
   const [isSaving, setIsSaving] = useState(false)
   const [draggedQuestionId, setDraggedQuestionId] = useState<string | null>(null)
 
+  const { isAuthenticated, getValidAccessToken } = useSpotify()
+
   const pointValues = [100, 200, 300, 400, 500]
 
   const addCategory = async () => {
@@ -185,13 +189,16 @@ export default function QuestionSetup({
   const searchSpotify = async () => {
     if (!searchQuery.trim()) return
 
+    if (!isAuthenticated) {
+      alert("Please connect to Spotify first to search for songs.")
+      return
+    }
+
     setIsSearching(true)
     try {
-      // Get access token from localStorage
-      const accessToken = localStorage.getItem('spotify_access_token')
+      const accessToken = await getValidAccessToken()
       if (!accessToken) {
-        alert('Please authenticate with Spotify first')
-        return
+        throw new Error('No valid access token available')
       }
 
       const response = await fetch(`/api/spotify/search?q=${encodeURIComponent(searchQuery)}&limit=10&access_token=${accessToken}`)
@@ -257,8 +264,7 @@ export default function QuestionSetup({
 
   const startEditingQuestion = (categoryId: string, question: Question) => {
     // Check if user has authenticated with Spotify
-    const accessToken = localStorage.getItem('spotify_access_token')
-    if (!accessToken) {
+    if (!isAuthenticated) {
       alert('Je moet eerst inloggen met Spotify om vragen te bewerken. Ga naar de Spotify pagina om in te loggen.')
       return
     }
@@ -427,30 +433,7 @@ export default function QuestionSetup({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              {typeof window !== 'undefined' && localStorage.getItem('spotify_access_token') ? (
-                <div className="flex items-center gap-2 text-green-400">
-                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                  <span className="text-sm">Spotify verbonden</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 text-red-400">
-                    <div className="w-2 h-2 bg-red-400 rounded-full"></div>
-                    <span className="text-sm">Spotify niet verbonden</span>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => window.location.href = '/spotify-auth'}
-                    className="border-green-500 text-green-400 hover:bg-green-500/10"
-                  >
-                    <Music className="h-3 w-3 mr-1" />
-                    Verbinden
-                  </Button>
-                </div>
-              )}
-            </div>
+            <SpotifyStatus variant="compact" />
             <Button onClick={onStartGame} disabled={!isGameReady} className="bg-green-600 hover:bg-green-700 text-white">
               <Play className="h-4 w-4 mr-2" />
               Start spel

@@ -10,6 +10,8 @@ import {
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from "@/components/theme-provider"
+import { SpotifyProvider } from "@/lib/spotify-context"
+import { SpotifySDKLoader } from "@/components/spotify-sdk-loader"
 
 import { nlBE } from '@clerk/localizations'
 
@@ -53,16 +55,20 @@ export default function RootLayout({
             disableTransitionOnChange
             storageKey="music-jeopardy-theme"
           >
-            <header className="flex justify-end items-center p-4 gap-4 h-16 absolute top-0 right-0 text-white">
-              <SignedOut>
-                <SignInButton />
-                <SignUpButton />
-              </SignedOut>
-              <SignedIn>
-                <UserButton />
-              </SignedIn>
-            </header>
-            {children}
+            <SpotifySDKLoader>
+              <SpotifyProvider>
+                <header className="flex justify-end items-center p-4 gap-4 h-16 absolute top-0 right-0 text-white">
+                  <SignedOut>
+                    <SignInButton />
+                    <SignUpButton />
+                  </SignedOut>
+                  <SignedIn>
+                    <UserButton />
+                  </SignedIn>
+                </header>
+                {children}
+              </SpotifyProvider>
+            </SpotifySDKLoader>
           </ThemeProvider>
         </body>
       </html>

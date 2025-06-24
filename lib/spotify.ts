@@ -4,7 +4,7 @@ import SpotifyWebApi from 'spotify-web-api-js';
 const SPOTIFY_CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID || '';
 const SPOTIFY_REDIRECT_URI = process.env.NODE_ENV === 'production' 
   ? process.env.NEXT_PUBLIC_SPOTIFY_REDIRECT_URL ?? ''
-  : 'https://7dca-2a02-1810-440a-6000-c47d-2fd5-ebad-3796.ngrok-free.app/api/spotify/callback';
+  : 'https://7458-2a02-1810-440a-6000-c246-6bd0-4aae-d904.ngrok-free.app/api/spotify/callback';
 
 // Initialize Spotify API
 export const spotifyApi = new SpotifyWebApi();

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ArrowLeft, Music, Trophy, Eye, Award, Play, Pause, X, Zap, QrCode, Volume2, VolumeX } from "lucide-react"
 import { useSpotifyPlayer } from "@/hooks/use-spotify-player"
+import { useSpotify } from "@/lib/spotify-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import QRCode from "qrcode"
@@ -57,10 +58,10 @@ export default function LyricsTranslationGame({
   // Use ref for more reliable timing
   const buzzStartTimeRef = useRef<number | null>(null)
   
-  // Get access token from localStorage
-  const accessToken = typeof window !== 'undefined' ? localStorage.getItem('spotify_access_token') : null
+  // Use centralized Spotify context
+  const { isAuthenticated, getValidAccessToken } = useSpotify()
   
-  // Use Spotify Web Playback SDK
+  // Use Spotify Web Playback SDK with centralized context
   const { 
     isReady, 
     isConnected, 
@@ -71,7 +72,7 @@ export default function LyricsTranslationGame({
     isPlaying: sdkIsPlaying,
     position,
     duration
-  } = useSpotifyPlayer(accessToken)
+  } = useSpotifyPlayer()
 
   // WebSocket connection for buzzer functionality
   const { socket } = useSocket(gameId || null)

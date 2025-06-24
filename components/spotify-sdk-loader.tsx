@@ -11,7 +11,8 @@ export function SpotifySDKLoader({ children }: SpotifySDKLoaderProps) {
 
   useEffect(() => {
     // Check if SDK is already loaded
-    if (typeof window !== 'undefined' && window.Spotify) {
+    if (typeof window !== 'undefined' && (window as any).Spotify) {
+      console.log('✅ Spotify SDK already available')
       setIsLoaded(true)
       return
     }
@@ -19,8 +20,17 @@ export function SpotifySDKLoader({ children }: SpotifySDKLoaderProps) {
     // Check if script is already in the document
     const existingScript = document.querySelector('script[src="https://sdk.scdn.co/spotify-player.js"]')
     if (existingScript) {
+      console.log('✅ Spotify SDK script already in document')
       setIsLoaded(true)
       return
+    }
+
+    console.log('🔄 Loading Spotify SDK script...')
+
+    // Set up the callback before loading the script
+    ;(window as any).onSpotifyWebPlaybackSDKReady = () => {
+      console.log('🎉 Spotify Web Playback SDK Ready callback triggered')
+      setIsLoaded(true)
     }
 
     // Load the Spotify SDK script
@@ -29,12 +39,13 @@ export function SpotifySDKLoader({ children }: SpotifySDKLoaderProps) {
     script.async = true
     
     script.onload = () => {
-      console.log('Spotify SDK script loaded successfully')
-      setIsLoaded(true)
+      console.log('✅ Spotify SDK script loaded successfully')
+      // The SDK will call window.onSpotifyWebPlaybackSDKReady when ready
     }
     
     script.onerror = () => {
-      console.error('Failed to load Spotify SDK script')
+      console.error('❌ Failed to load Spotify SDK script')
+      setIsLoaded(false)
     }
 
     document.head.appendChild(script)
@@ -44,6 +55,8 @@ export function SpotifySDKLoader({ children }: SpotifySDKLoaderProps) {
       if (script.parentNode) {
         script.parentNode.removeChild(script)
       }
+      // Clean up callback
+      ;(window as any).onSpotifyWebPlaybackSDKReady = undefined
     }
   }, [])
 

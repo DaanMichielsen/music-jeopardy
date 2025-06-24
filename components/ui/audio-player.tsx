@@ -26,14 +26,11 @@ export function AudioPlayer({ track, snippet, onSnippetChange, className }: Audi
   const [usePreview, setUsePreview] = useState(false)
   const [isPlayingSnippet, setIsPlayingSnippet] = useState(false)
   const [snippetPlayTime, setSnippetPlayTime] = useState(0)
-  const audioRef = useRef<HTMLAudioElement>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const stopTimerRef = useRef<NodeJS.Timeout | null>(null)
   const snippetStartTimeRef = useRef<number>(0)
-
-  // Get access token from localStorage
-  const accessToken = typeof window !== 'undefined' ? localStorage.getItem('spotify_access_token') : null
   
-  // Use Spotify Web Playback SDK
+  // Use Spotify Web Playback SDK with centralized context
   const {
     isReady: sdkReady,
     isConnected: sdkConnected,
@@ -46,16 +43,15 @@ export function AudioPlayer({ track, snippet, onSnippetChange, className }: Audi
     isPlaying: sdkIsPlaying,
     position: sdkPosition,
     duration: sdkDuration
-  } = useSpotifyPlayer(accessToken)
+  } = useSpotifyPlayer()
 
   // Debug logging
   useEffect(() => {
     console.log('AudioPlayer Debug Info:')
-    console.log('- Access Token:', accessToken ? 'Present' : 'Missing')
     console.log('- SDK Ready:', sdkReady)
     console.log('- SDK Connected:', sdkConnected)
     console.log('- Window Spotify:', typeof window !== 'undefined' && window.Spotify ? 'Available' : 'Not Available')
-  }, [accessToken, sdkReady, sdkConnected])
+  }, [sdkReady, sdkConnected])
 
   // Initialize snippet if not provided
   const defaultSnippet: AudioSnippet = {
@@ -223,27 +219,25 @@ export function AudioPlayer({ track, snippet, onSnippetChange, className }: Audi
           
           await audio.play()
           setIsPlaying(true)
-          setIsPlayingSnippet(false) // Not playing a snippet when using main play button
+          setIsPlayingSnippet(false)
           setIsLoading(false)
         } catch (error) {
           console.error('Error playing audio:', error)
           setIsLoading(false)
           setIsPlaying(false)
-          setIsPlayingSnippet(false)
         }
       }
     }
   }
 
   const handleTimeChange = (value: number[]) => {
+    const newTime = value[0] * 1000 // Convert to milliseconds
+    setCurrentTime(newTime)
+    
     if (sdkConnected && !usePreview) {
-      sdkSeek(value[0])
-    } else {
-      const audio = audioRef.current
-      if (!audio) return
-      const newTime = value[0] / 1000 // Convert from milliseconds to seconds
-      audio.currentTime = newTime
-      setCurrentTime(value[0])
+      sdkSeek(newTime)
+    } else if (audioRef.current) {
+      audioRef.current.currentTime = newTime / 1000
     }
   }
 
@@ -256,14 +250,13 @@ export function AudioPlayer({ track, snippet, onSnippetChange, className }: Audi
   }
 
   const formatTime = (ms: number) => {
-    const seconds = Math.floor(ms / 1000)
-    const minutes = Math.floor(seconds / 60)
-    const remainingSeconds = seconds % 60
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+    const minutes = Math.floor(ms / 60000)
+    const seconds = Math.floor((ms % 60000) / 1000)
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
   const handleSnippetStartChange = (value: number[]) => {
-    const newStartTime = value[0]
+    const newStartTime = value[0] * 1000 // Convert to milliseconds
     const newSnippet: AudioSnippet = {
       ...currentSnippet,
       startTime: newStartTime,
@@ -273,7 +266,7 @@ export function AudioPlayer({ track, snippet, onSnippetChange, className }: Audi
   }
 
   const handleSnippetEndChange = (value: number[]) => {
-    const newEndTime = value[0]
+    const newEndTime = value[0] * 1000 // Convert to milliseconds
     const newSnippet: AudioSnippet = {
       ...currentSnippet,
       endTime: newEndTime,
@@ -282,77 +275,58 @@ export function AudioPlayer({ track, snippet, onSnippetChange, className }: Audi
     onSnippetChange?.(newSnippet)
   }
 
-  // Manual connection function
   const handleConnect = async () => {
-    console.log('Manual connect triggered')
-    const success = await sdkConnect()
-    if (success) {
-      console.log('Successfully connected to Spotify')
-    } else {
-      console.log('Failed to connect to Spotify')
+    if (sdkReady && !sdkConnected) {
+      await sdkConnect()
     }
   }
 
   const playSnippetPreview = async (snippet: AudioSnippet) => {
-    console.log('🎵 PLAYING SNIPPET:', {
-      snippet,
-      sdkConnected,
-      usePreview,
-      trackPreviewUrl: !!track.preview_url
-    })
+    console.log('🎵 SNIPPET PREVIEW START:', snippet)
     
-    // Clear any existing stop timer
-    if (stopTimerRef.current) {
-      clearTimeout(stopTimerRef.current)
-      stopTimerRef.current = null
+    if (isPlayingSnippet) {
+      console.log('⏹️ STOPPING CURRENT SNIPPET')
+      // Stop current snippet
+      if (sdkConnected && !usePreview) {
+        await sdkPause()
+      } else if (audioRef.current) {
+        audioRef.current.pause()
+      }
+      setIsPlayingSnippet(false)
+      setIsPlaying(false)
+      if (stopTimerRef.current) {
+        clearTimeout(stopTimerRef.current)
+        stopTimerRef.current = null
+      }
+      return
     }
-    
-    // Reset snippet play time
-    setSnippetPlayTime(0)
+
+    setIsPlayingSnippet(true)
     snippetStartTimeRef.current = Date.now()
-    
+
     if (sdkConnected && !usePreview) {
-      // Use Spotify Web Playback SDK
-      try {
-        setIsLoading(true)
-        const trackUri = `spotify:track:${track.id}`
-        console.log('🎵 SDK PLAYING:', { trackUri, startTime: snippet.startTime })
-        await sdkPlayTrack(trackUri, snippet.startTime)
-        setIsPlaying(true)
-        setIsPlayingSnippet(true)
-        setIsLoading(false)
-        console.log('✅ SDK SNIPPET STARTED')
-        
-        // Set timer to stop at snippet end
-        const snippetDuration = snippet.endTime - snippet.startTime
-        console.log('⏰ SETTING STOP TIMER:', { 
-          snippetDuration, 
-          stopInMs: snippetDuration,
-          startTime: snippet.startTime,
-          endTime: snippet.endTime
-        })
-        
-        stopTimerRef.current = setTimeout(() => {
-          console.log('🔴 TIMER-BASED AUTO-STOP TRIGGERED')
-          sdkPause()
-          setIsPlaying(false)
-          setIsPlayingSnippet(false)
-          setSnippetPlayTime(0)
-          stopTimerRef.current = null
-        }, snippetDuration)
-        
-      } catch (error) {
-        console.error('❌ Error playing snippet with SDK:', error)
-        setIsLoading(false)
+      // Use SDK for snippet playback
+      console.log('🎵 SDK SNIPPET PLAYBACK')
+      const trackUri = `spotify:track:${track.id}`
+      await sdkPlayTrack(trackUri, snippet.startTime)
+      setIsPlaying(true)
+      
+      // Set up auto-stop timer
+      const snippetDuration = snippet.endTime - snippet.startTime
+      stopTimerRef.current = setTimeout(() => {
+        console.log('⏹️ SDK SNIPPET AUTO-STOP')
+        sdkPause()
         setIsPlaying(false)
         setIsPlayingSnippet(false)
-        setSnippetPlayTime(0)
-      }
+        stopTimerRef.current = null
+      }, snippetDuration)
     } else {
-      // Use preview URL (fallback)
+      // Use preview URL for snippet playback
+      console.log('🎵 PREVIEW SNIPPET PLAYBACK')
       const audio = audioRef.current
       if (!audio || !track.preview_url) {
-        console.log('❌ No audio element or preview URL available')
+        console.log('❌ No preview URL available')
+        setIsPlayingSnippet(false)
         return
       }
 
@@ -402,7 +376,6 @@ export function AudioPlayer({ track, snippet, onSnippetChange, className }: Audi
           audio.pause()
           setIsPlaying(false)
           setIsPlayingSnippet(false)
-          setSnippetPlayTime(0)
           stopTimerRef.current = null
         }, snippetDuration)
         
@@ -411,7 +384,6 @@ export function AudioPlayer({ track, snippet, onSnippetChange, className }: Audi
         setIsLoading(false)
         setIsPlaying(false)
         setIsPlayingSnippet(false)
-        setSnippetPlayTime(0)
       }
     }
   }
@@ -455,8 +427,8 @@ export function AudioPlayer({ track, snippet, onSnippetChange, className }: Audi
         {/* Track Info */}
         <div className="flex items-center gap-3">
           {track.album.images[0] && (
-            <img 
-              src={track.album.images[0].url} 
+            <img
+              src={track.album.images[0].url}
               alt={track.album.name}
               className="w-12 h-12 rounded-md object-cover"
             />
@@ -514,7 +486,7 @@ export function AudioPlayer({ track, snippet, onSnippetChange, className }: Audi
               } else {
                 // Log when we're close to the end time
                 if (currentTimeMs >= currentSnippet.endTime - 1000) {
-                  console.log('�� CLOSE TO END:', {
+                  console.log('🟡 CLOSE TO END:', {
                     currentTimeMs,
                     snippetEndTime: currentSnippet.endTime,
                     remaining: currentSnippet.endTime - currentTimeMs
@@ -546,7 +518,7 @@ export function AudioPlayer({ track, snippet, onSnippetChange, className }: Audi
               <Play className="h-4 w-4" />
             )}
           </Button>
-
+          
           <div className="flex-1 space-y-2">
             <div className="flex justify-between text-xs text-slate-400">
               <span>{formatTime(currentTime)}</span>
@@ -612,7 +584,7 @@ export function AudioPlayer({ track, snippet, onSnippetChange, className }: Audi
                 </TooltipContent>
               </Tooltip>
             </div>
-            
+
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-slate-400">
                 <span>Start: {formatTime(currentSnippet.startTime)}</span>

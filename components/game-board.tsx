@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Slider } from "@/components/ui/slider"
 import { ArrowLeft, Music, Trophy, Eye, Award, Play, Pause, Volume2, VolumeX, ExternalLink, X, Zap, QrCode } from "lucide-react"
 import { useSpotifyPlayer } from "@/hooks/use-spotify-player"
+import { useSpotify } from "@/lib/spotify-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import QRCode from "qrcode"
@@ -44,6 +45,8 @@ export default function GameBoard({
   const [scoringMode, setScoringMode] = useState<'song' | 'artist'>('song')
   const [songCorrect, setSongCorrect] = useState(false)
   const [artistCorrect, setArtistCorrect] = useState(false)
+  const [songTeamId, setSongTeamId] = useState<string | null>(null)
+  const [artistTeamId, setArtistTeamId] = useState<string | null>(null)
   const [showBuzzerQR, setShowBuzzerQR] = useState(false)
   const [buzzerQRUrl, setBuzzerQRUrl] = useState("")
   const [buzzerQRDataUrl, setBuzzerQRDataUrl] = useState("")
@@ -55,13 +58,20 @@ export default function GameBoard({
   const [showBuzzFeed, setShowBuzzFeed] = useState(false)
   const [showScoreboard, setShowScoreboard] = useState(false)
   
+  // Live full track player state
+  const [fullTrackPlayTime, setFullTrackPlayTime] = useState(0)
+  const [fullTrackStartTime, setFullTrackStartTime] = useState<number | null>(null)
+  const [fullTrackTimer, setFullTrackTimer] = useState<NodeJS.Timeout | null>(null)
+  const [isSeeking, setIsSeeking] = useState(false)
+  const [seekPosition, setSeekPosition] = useState(0)
+  
   // Use ref for more reliable timing
   const buzzStartTimeRef = useRef<number | null>(null)
   
-  // Get access token from localStorage
-  const accessToken = typeof window !== 'undefined' ? localStorage.getItem('spotify_access_token') : null
+  // Use centralized Spotify context
+  const { isAuthenticated, getValidAccessToken } = useSpotify()
   
-  // Use Spotify Web Playback SDK
+  // Use Spotify Web Playback SDK with centralized context
   const { 
     isReady, 
     isConnected, 
@@ -71,49 +81,69 @@ export default function GameBoard({
     currentTrack, 
     isPlaying: sdkIsPlaying,
     position,
-    duration
-  } = useSpotifyPlayer(accessToken)
+    duration,
+    seek
+  } = useSpotifyPlayer()
 
   // WebSocket connection for buzzer functionality
   const { socket } = useSocket(gameId || null)
 
   const selectQuestion = (category: Category, question: Question) => {
-    if (!question.isAnswered) {
-      setSelectedQuestion({ category, question })
-      setShowAnswer(false)
-      setShowHint(false)
-      setHideAnswer(false)
-      setScoringMode('song')
-      setSongCorrect(false)
-      setArtistCorrect(false)
-      setIsFlipped(false)
-      setIsPlaying(false)
-      setIsPlayingFullSong(false)
-      setCurrentTime(0)
-      
-      // Reset and activate buzzer for this question
-      setBuzzOrder([])
-      setFirstBuzz(null)
-      setShowBuzzOrder(false)
-      setShowBuzzFeed(false)
-      setShowScoreboard(true) // Show scoreboard when question opens
-      
-      // Small delay to ensure question is loaded before activating buzzer
-      setTimeout(() => {
-        activateBuzzer()
-        // Trigger flip animation
-        setTimeout(() => setIsFlipped(true), 100)
-      }, 500)
+    if (question.isAnswered) return
+
+    // Reset buzzer state for new question
+    setBuzzStartTime(null)
+    setBuzzOrder([])
+    buzzStartTimeRef.current = null
+    setFirstBuzz(null)
+    setShowBuzzFeed(false)
+    setShowScoreboard(false)
+    setShowAnswer(false)
+    setShowHint(false)
+    setHideAnswer(false)
+    setScoringMode('song')
+    setSongCorrect(false)
+    setArtistCorrect(false)
+    setSongTeamId(null)
+    setArtistTeamId(null)
+    setIsFlipped(false)
+
+    // Stop any current audio
+    pause()
+    setIsPlaying(false)
+    setIsPlayingFullSong(false)
+    if (fullTrackTimer) {
+      clearInterval(fullTrackTimer)
+      setFullTrackTimer(null)
     }
+    setFullTrackStartTime(null)
+    setFullTrackPlayTime(0)
+
+    // Reset buzzer on server
+    if (socket) {
+      socket.emit('reset-buzzer', gameId)
+    }
+
+    setSelectedQuestion({ category, question })
+    
+    // Trigger flip animation after a short delay
+    setTimeout(() => setIsFlipped(true), 100)
   }
 
   const playAudioSnippet = async (track: SpotifyTrack, snippet: AudioSnippet) => {
-    if (!isConnected || !track.id) {
-      console.log('Not connected to Spotify or no track ID')
+    if (!isAuthenticated || !track.id) {
+      console.log('Not authenticated or no track ID')
       return
     }
 
     try {
+      // Get valid access token from centralized context
+      const accessToken = await getValidAccessToken()
+      if (!accessToken) {
+        console.log('No valid access token available')
+        return
+      }
+
       // Connect to Spotify if not already connected
       if (!isConnected) {
         const connected = await connect()
@@ -160,12 +190,19 @@ export default function GameBoard({
   }
 
   const playFullSong = async () => {
-    if (!selectedQuestion?.question.spotifyTrackId || !isConnected) {
-      console.log('No track ID or not connected')
+    if (!selectedQuestion?.question.spotifyTrackId || !isAuthenticated) {
+      console.log('No track ID or not authenticated')
       return
     }
 
     try {
+      // Get valid access token from centralized context
+      const accessToken = await getValidAccessToken()
+      if (!accessToken) {
+        console.log('No valid access token available')
+        return
+      }
+
       // Connect to Spotify if not already connected
       if (!isConnected) {
         const connected = await connect()
@@ -173,6 +210,22 @@ export default function GameBoard({
           console.log('Failed to connect to Spotify')
           return
         }
+      }
+
+      // If already playing full song, pause it
+      if (isPlayingFullSong) {
+        await pause()
+        setIsPlayingFullSong(false)
+        setIsPlaying(false)
+        
+        // Stop the timer
+        if (fullTrackTimer) {
+          clearInterval(fullTrackTimer)
+          setFullTrackTimer(null)
+        }
+        setFullTrackStartTime(null)
+        setFullTrackPlayTime(0)
+        return
       }
 
       // Play the full track from the beginning
@@ -183,6 +236,22 @@ export default function GameBoard({
         setIsPlayingFullSong(true)
         setIsPlaying(false)
         console.log('Started playing full song')
+        
+        // Start live timer tracking
+        const startTime = Date.now()
+        setFullTrackStartTime(startTime)
+        setFullTrackPlayTime(0)
+        
+        // Set up timer to update play time every 100ms
+        const timer = setInterval(() => {
+          // Don't update if we're currently seeking
+          if (!isSeeking) {
+            const elapsed = Date.now() - startTime
+            setFullTrackPlayTime(elapsed)
+          }
+        }, 100)
+        
+        setFullTrackTimer(timer)
       } else {
         console.log('Failed to play full song')
       }
@@ -194,6 +263,11 @@ export default function GameBoard({
   const togglePlay = async () => {
     if (!selectedQuestion?.question.spotifyTrackId || selectedQuestion.question.snippetStartTime === null || selectedQuestion.question.snippetEndTime === null) {
       console.log('No track ID or snippet data available')
+      return
+    }
+
+    if (!isAuthenticated) {
+      console.log('Not authenticated with Spotify')
       return
     }
 
@@ -239,6 +313,36 @@ export default function GameBoard({
     setIsMuted(!isMuted)
   }
 
+  const seekFullTrack = async (seekTime: number) => {
+    if (!isPlayingFullSong || !isConnected) return
+    
+    try {
+      // Set seeking state to prevent timer interference
+      setIsSeeking(true)
+      setSeekPosition(seekTime)
+      
+      // Seek to the specified time
+      await seek(seekTime)
+      
+      // Update the timer to reflect the new position
+      if (fullTrackStartTime) {
+        const newStartTime = Date.now() - seekTime
+        setFullTrackStartTime(newStartTime)
+        setFullTrackPlayTime(seekTime)
+      }
+      
+      // Resume timer updates after a short delay
+      setTimeout(() => {
+        setIsSeeking(false)
+        setSeekPosition(0)
+      }, 100)
+    } catch (error) {
+      console.error('Error seeking in full track:', error)
+      setIsSeeking(false)
+      setSeekPosition(0)
+    }
+  }
+
   const openInSpotify = () => {
     if (selectedQuestion?.question.spotifyTrack?.external_urls?.spotify) {
       window.open(selectedQuestion.question.spotifyTrack.external_urls.spotify, '_blank')
@@ -271,7 +375,58 @@ export default function GameBoard({
   // Update playing state from SDK
   useEffect(() => {
     setIsPlaying(sdkIsPlaying && !isPlayingFullSong)
-  }, [sdkIsPlaying, isPlayingFullSong])
+    
+    // If SDK stops playing and we were playing full song, clean up
+    if (!sdkIsPlaying && isPlayingFullSong) {
+      setIsPlayingFullSong(false)
+      if (fullTrackTimer) {
+        clearInterval(fullTrackTimer)
+        setFullTrackTimer(null)
+      }
+      setFullTrackStartTime(null)
+      setFullTrackPlayTime(0)
+    }
+  }, [sdkIsPlaying, isPlayingFullSong, fullTrackTimer])
+
+  // Send game state updates to buzzer clients
+  useEffect(() => {
+    if (!socket || !selectedQuestion) return
+
+    const gameStateUpdate = {
+      currentQuestion: {
+        category: selectedQuestion.category.name,
+        points: selectedQuestion.question.points,
+        songName: selectedQuestion.question.songName,
+        artist: selectedQuestion.question.artist
+      },
+      isPlaying: !!selectedQuestion, // Question is active
+      buzzStartTime: buzzStartTime,
+      buzzOrder: buzzOrder,
+      scoreboard: teams.map(team => ({
+        teamId: team.id,
+        teamName: team.name,
+        score: team.score,
+        color: team.color
+      }))
+    }
+
+    socket.emit('game-state-update', gameStateUpdate)
+    console.log('Game state updated:', gameStateUpdate)
+  }, [socket, selectedQuestion, buzzStartTime, buzzOrder, teams])
+
+  // Activate buzzer immediately when question is selected
+  useEffect(() => {
+    if (!socket || !selectedQuestion) return
+
+    // Activate buzzer immediately when question is opened
+    const startTime = Date.now()
+    setBuzzStartTime(startTime)
+    buzzStartTimeRef.current = startTime
+    
+    // Send buzz activation to all buzzer clients
+    socket.emit('buzz-activated', { startTime })
+    console.log('Buzzer activated immediately for question at:', startTime)
+  }, [socket, selectedQuestion?.question.id]) // Only trigger when question ID changes
 
   // Cleanup timer when component unmounts or question changes
   useEffect(() => {
@@ -280,71 +435,34 @@ export default function GameBoard({
         clearTimeout(stopTimer)
         setStopTimer(null)
       }
+      if (fullTrackTimer) {
+        clearInterval(fullTrackTimer)
+        setFullTrackTimer(null)
+      }
     }
-  }, [stopTimer])
+  }, [stopTimer, fullTrackTimer])
 
+  // Handle first buzz from players
   useEffect(() => {
     if (!socket) return
 
-    socket.on('first-buzz', (data) => {
+    const handleFirstBuzz = (data: any) => {
       console.log('First buzz received:', data)
-      const now = Date.now()
-      setBuzzStartTime(now)
-      buzzStartTimeRef.current = now
-      setFirstBuzz({ ...data, timestamp: now })
-      setBuzzOrder([{ 
-        ...data, 
-        timestamp: now, 
-        timeFromStart: 0,
-        timeFromPrevious: 0 
-      }])
-      setShowBuzzFeed(true)
-    })
+      setFirstBuzz(data)
+      setBuzzOrder(prev => [...prev, data])
+    }
 
-    socket.on('buzz-received', (data) => {
+    const handleBuzzReceived = (data: any) => {
       console.log('Buzz received:', data)
-      const now = Date.now()
-      
-      // Add to buzz order if not already the first buzz
-      setBuzzOrder(prev => {
-        const exists = prev.find(buzz => buzz.playerId === data.playerId)
-        if (!exists) {
-          console.log('Adding buzz to order:', data)
-          
-          // Calculate time from start and from previous buzz using ref for reliability
-          const timeFromStart = buzzStartTimeRef.current ? now - buzzStartTimeRef.current : 0
-          const timeFromPrevious = Array.isArray(prev) && prev.length > 0 ? now - prev[prev.length - 1].timestamp : 0
-          
-          console.log('Timing calculations:', {
-            now,
-            buzzStartTimeRef: buzzStartTimeRef.current,
-            timeFromStart,
-            timeFromPrevious,
-            prevLength: Array.isArray(prev) ? prev.length : 0,
-            lastTimestamp: Array.isArray(prev) && prev.length > 0 ? prev[prev.length - 1].timestamp : 'N/A'
-          })
-          
-          const buzzWithTime = { 
-            ...data, 
-            timestamp: now, 
-            timeFromStart,
-            timeFromPrevious
-          }
-          return [...prev, buzzWithTime]
-        }
-        console.log('Buzz already exists:', data.playerId)
-        return prev
-      })
-      
-      // Show buzz feed if not already visible
-      if (!showBuzzFeed) {
-        setShowBuzzFeed(true)
-      }
-    })
+      setBuzzOrder(prev => [...prev, data])
+    }
+
+    socket.on('first-buzz', handleFirstBuzz)
+    socket.on('buzz-received', handleBuzzReceived)
 
     return () => {
-      socket.off('first-buzz')
-      socket.off('buzz-received')
+      socket.off('first-buzz', handleFirstBuzz)
+      socket.off('buzz-received', handleBuzzReceived)
     }
   }, [socket])
 
@@ -468,62 +586,73 @@ export default function GameBoard({
       setHideAnswer(false)
       setScoringMode('song')
       setIsFlipped(false)
+      setSongTeamId(null)
+      setArtistTeamId(null)
     }
   }
 
   const awardPoints = (teamId: string) => {
     if (selectedQuestion) {
-      // Calculate points: 50% for song name, 50% for artist
-      let pointsToAward = 0
+      let updatedTeams = [...teams]
+      let pointsAwarded = 0
       
-      if (songCorrect) {
-        pointsToAward += Math.floor(selectedQuestion.question.points * 0.5)
-      }
-      
-      if (artistCorrect) {
-        pointsToAward += Math.floor(selectedQuestion.question.points * 0.5)
-      }
-      
-      // If both are correct, award full points
-      if (songCorrect && artistCorrect) {
-        pointsToAward = selectedQuestion.question.points
-      }
-      
-      if (pointsToAward > 0) {
-        const updatedTeams = teams.map((team) =>
-          team.id === teamId ? { ...team, score: team.score + pointsToAward } : team,
+      // Award song points if correct and not already awarded
+      if (songCorrect && songTeamId === null) {
+        const songPoints = Math.floor(selectedQuestion.question.points * 0.5)
+        updatedTeams = updatedTeams.map((team) =>
+          team.id === teamId ? { ...team, score: team.score + songPoints } : team,
         )
+        setSongTeamId(teamId)
+        pointsAwarded += songPoints
+      }
+      
+      // Award artist points if correct and not already awarded
+      if (artistCorrect && artistTeamId === null) {
+        const artistPoints = Math.floor(selectedQuestion.question.points * 0.5)
+        updatedTeams = updatedTeams.map((team) =>
+          team.id === teamId ? { ...team, score: team.score + artistPoints } : team,
+        )
+        setArtistTeamId(teamId)
+        pointsAwarded += artistPoints
+      }
+      
+      // Update teams if any points were awarded
+      if (pointsAwarded > 0) {
         onTeamsChange(updatedTeams)
+      }
+      
+      // Check if all available points have been awarded
+      const songAwarded = songCorrect && songTeamId !== null
+      const artistAwarded = artistCorrect && artistTeamId !== null
+      
+      if (songAwarded && artistAwarded) {
+        // All points awarded, close the question
         markQuestionAnswered()
-      } else {
-        // No points awarded, just close the question
+      } else if (!songCorrect && !artistCorrect) {
+        // No correct answers, just close the question
         closeQuestion()
       }
+      // If some points are still available, keep the question open
     }
   }
 
   const closeQuestion = () => {
-    // Stop audio
-    pause()
+    if (socket) {
+      socket.emit('reset-buzzer', gameId)
+    }
+    setSelectedQuestion(null)
+    setFirstBuzz(null)
+    setBuzzOrder([])
+    setBuzzStartTime(null)
+    buzzStartTimeRef.current = null
     setIsPlaying(false)
     setIsPlayingFullSong(false)
-
-    // Reset buzzer
-    resetBuzzer()
-
-    // Hide overlays
-    setShowBuzzFeed(false)
-    setShowScoreboard(false)
-
-    // Just close the question without marking it as answered
-    setSelectedQuestion(null)
-    setShowAnswer(false)
-    setShowHint(false)
-    setHideAnswer(false)
-    setScoringMode('song')
-    setSongCorrect(false)
-    setArtistCorrect(false)
-    setIsFlipped(false)
+    if (fullTrackTimer) {
+      clearInterval(fullTrackTimer)
+      setFullTrackTimer(null)
+    }
+    setFullTrackStartTime(null)
+    setFullTrackPlayTime(0)
   }
 
   return (
@@ -643,7 +772,7 @@ export default function GameBoard({
         <div className="grid grid-cols-5 gap-2 mb-2">
           {categories.map((category) => (
             <div key={category.id} className="text-center bg-slate-800/50 p-2 rounded-lg">
-              <h3 className="text-sm font-bold text-white truncate">{category.name}</h3>
+              <h3 className="text-lg font-bold text-white truncate">{category.name}</h3>
               <Badge variant="outline" className="text-xs text-slate-300 border-slate-600 mt-1">
                 {category.genre}
               </Badge>
@@ -662,7 +791,7 @@ export default function GameBoard({
                   key={question.id}
                   onClick={() => selectQuestion(category, question)}
                   disabled={question.isAnswered}
-                  className={`flex-1 text-lg font-bold ${
+                  className={`flex-1 text-3xl font-bold ${
                     question.isAnswered
                       ? "bg-slate-600 text-slate-400 cursor-not-allowed"
                       : "bg-blue-600 hover:bg-blue-700 text-white"
@@ -701,7 +830,7 @@ export default function GameBoard({
                   <CardContent className="flex flex-col h-full p-6 transform scale-x-[-1]">
                     {/* Top Controls */}
                     <div className="flex items-center justify-between mb-4">
-                      <Badge className="bg-yellow-600 text-white text-lg px-4 py-2">
+                      <Badge className="bg-yellow-600 text-white text-2xl px-4 py-2">
                         ${selectedQuestion.question.points}
                       </Badge>
                       
@@ -741,19 +870,58 @@ export default function GameBoard({
                           </div>
                         </div>
                         
-                        {/* Full Song Button */}
+                        {/* Full Song Live Player */}
                         {selectedQuestion.question.spotifyTrackId && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={playFullSong}
-                            disabled={!isConnected}
-                            className={`border-green-500 text-green-400 hover:bg-green-500/10 ${
-                              !isConnected ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                          >
-                            <Play className="h-4 w-4 mr-1" />
-                          </Button>
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={playFullSong}
+                                disabled={!isAuthenticated || !isConnected}
+                                className={`border-green-500 text-green-400 hover:bg-green-500/10 ${
+                                  !isAuthenticated || !isConnected ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                              >
+                                {isPlayingFullSong ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                                <span className="ml-1 text-xs">
+                                  {isPlayingFullSong ? 'Pause' : 'Volledige nummer'}
+                                </span>
+                              </Button>
+                              
+                              {isPlayingFullSong && (
+                                <div className="flex items-center gap-2 text-xs text-slate-300">
+                                  <span>{formatTime(isSeeking ? seekPosition : fullTrackPlayTime)}</span>
+                                  <span>/</span>
+                                  <span>{formatTime(selectedQuestion.question.spotifyDurationMs || 0)}</span>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Seek Bar - Only show when playing full song */}
+                            {isPlayingFullSong && (
+                              <div className="space-y-1">
+                                <Slider
+                                  value={[isSeeking ? seekPosition : fullTrackPlayTime]}
+                                  onValueChange={(value) => {
+                                    // Update seek position during dragging
+                                    setSeekPosition(value[0])
+                                  }}
+                                  onValueCommit={(value) => {
+                                    // Perform actual seek when user finishes dragging
+                                    seekFullTrack(value[0])
+                                  }}
+                                  max={selectedQuestion.question.spotifyDurationMs || 0}
+                                  step={1000}
+                                  className="w-full"
+                                />
+                                <div className="flex justify-between text-xs text-slate-400">
+                                  <span>0:00</span>
+                                  <span>{formatTime(selectedQuestion.question.spotifyDurationMs || 0)}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -767,9 +935,9 @@ export default function GameBoard({
                           <Button
                             size="lg"
                             onClick={togglePlay}
-                            disabled={!isConnected || !selectedQuestion.question.spotifyTrackId}
+                            disabled={!isAuthenticated || !isConnected || !selectedQuestion.question.spotifyTrackId}
                             className={`w-24 h-24 rounded-full text-white ${
-                              isConnected && selectedQuestion.question.spotifyTrackId
+                              isAuthenticated && isConnected && selectedQuestion.question.spotifyTrackId
                                 ? 'bg-green-600 hover:bg-green-700'
                                 : 'bg-slate-600 cursor-not-allowed'
                             }`}
@@ -782,8 +950,14 @@ export default function GameBoard({
                             <p className="text-xs">
                               {formatTime(selectedQuestion.question.snippetStartTime || 0)} - {formatTime(selectedQuestion.question.snippetEndTime || 0)}
                             </p>
-                            {!isConnected && (
-                              <p className="text-xs text-red-400 mt-1">Niet verbonden met Spotify</p>
+                            {!isAuthenticated && (
+                              <p className="text-xs text-red-400 mt-1">Niet ingelogd bij Spotify</p>
+                            )}
+                            {isAuthenticated && !isConnected && (
+                              <p className="text-xs text-yellow-400 mt-1">Verbinden met Spotify...</p>
+                            )}
+                            {isAuthenticated && isConnected && (
+                              <p className="text-xs text-green-400 mt-1">Verbonden met Spotify</p>
                             )}
                           </div>
                         </div>
@@ -874,7 +1048,6 @@ export default function GameBoard({
                       {/* Scoring Mode Selection */}
                       {showAnswer && (
                         <div className="space-y-4">
-                          {/* <h4 className="text-lg font-bold text-white">Wat hebben ze goed geraden?</h4> */}
                           <div className="flex flex-col gap-3 max-w-md mx-auto">
                             <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
                               <div className="flex items-center gap-3">
@@ -889,9 +1062,16 @@ export default function GameBoard({
                                   Nummer naam
                                 </label>
                               </div>
-                              <span className="text-yellow-400 font-bold">
-                                +{Math.floor(selectedQuestion.question.points * 0.5)} punten
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-yellow-400 font-bold">
+                                  +{Math.floor(selectedQuestion.question.points * 0.5)} punten
+                                </span>
+                                {songTeamId && (
+                                  <Badge className="bg-green-600 text-white text-xs">
+                                    {teams.find(t => t.id === songTeamId)?.name}
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                             
                             <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
@@ -907,20 +1087,29 @@ export default function GameBoard({
                                   Artiest naam
                                 </label>
                               </div>
-                              <span className="text-yellow-400 font-bold">
-                                +{Math.floor(selectedQuestion.question.points * 0.5)} punten
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-yellow-400 font-bold">
+                                  +{Math.floor(selectedQuestion.question.points * 0.5)} punten
+                                </span>
+                                {artistTeamId && (
+                                  <Badge className="bg-green-600 text-white text-xs">
+                                    {teams.find(t => t.id === artistTeamId)?.name}
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </div>
                           
-                          {songCorrect || artistCorrect && (
+                          {(songCorrect || artistCorrect) && (
                             <div className="text-center">
                               <p className="text-sm text-slate-300">
-                                Totaal te verdienen: <span className="font-bold text-green-400">
-                                  {songCorrect && artistCorrect 
-                                    ? selectedQuestion.question.points 
-                                    : Math.floor(selectedQuestion.question.points * 0.5)
-                                  } punten
+                                Nog te verdienen: <span className="font-bold text-green-400">
+                                  {(() => {
+                                    let available = 0
+                                    if (songCorrect && !songTeamId) available += Math.floor(selectedQuestion.question.points * 0.5)
+                                    if (artistCorrect && !artistTeamId) available += Math.floor(selectedQuestion.question.points * 0.5)
+                                    return available
+                                  })()} punten
                                 </span>
                               </p>
                             </div>
@@ -938,15 +1127,22 @@ export default function GameBoard({
                         </Button>
                       ) : (
                         <>
-                          {songCorrect || artistCorrect ? (
+                          {/* Check if there are any points still available */}
+                          {(() => {
+                            const songAvailable = songCorrect && !songTeamId
+                            const artistAvailable = artistCorrect && !artistTeamId
+                            return songAvailable || artistAvailable
+                          })() ? (
                             <>
                               <div className="w-full text-center mb-2">
                                 <p className="text-sm text-slate-300">
-                                  Punten toekennen: <span className="font-bold text-green-400">
-                                    {songCorrect && artistCorrect 
-                                      ? selectedQuestion.question.points 
-                                      : Math.floor(selectedQuestion.question.points * 0.5)
-                                    } punten
+                                  Nog te verdienen: <span className="font-bold text-green-400">
+                                    {(() => {
+                                      let available = 0
+                                      if (songCorrect && !songTeamId) available += Math.floor(selectedQuestion.question.points * 0.5)
+                                      if (artistCorrect && !artistTeamId) available += Math.floor(selectedQuestion.question.points * 0.5)
+                                      return available
+                                    })()} punten
                                   </span>
                                 </p>
                               </div>
@@ -963,9 +1159,9 @@ export default function GameBoard({
                             </>
                           ) : (
                             <div className="w-full text-center">
-                              {/* <p className="text-sm text-slate-400">
-                                Selecteer wat ze goed hebben geraden om punten toe te kennen
-                              </p> */}
+                              <p className="text-sm text-slate-400">
+                                {songCorrect || artistCorrect ? 'Alle punten toegekend' : 'Selecteer wat ze goed hebben geraden'}
+                              </p>
                             </div>
                           )}
                           <Button

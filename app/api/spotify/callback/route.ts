@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   // Determine the base URL for redirects
   const baseUrl = process.env.NODE_ENV === 'production' 
     ? process.env.NEXT_PUBLIC_BASE_URL ?? ''
-    : 'https://7dca-2a02-1810-440a-6000-c47d-2fd5-ebad-3796.ngrok-free.app';
+    : 'https://7458-2a02-1810-440a-6000-c246-6bd0-4aae-d904.ngrok-free.app';
 
   if (error) {
     return NextResponse.redirect(new URL(`/spotify-auth?error=${error}`, baseUrl));

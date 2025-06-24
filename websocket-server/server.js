@@ -21,6 +21,9 @@ global.io = io
 // Track buzzer state for each game
 const buzzerState = new Map()
 
+// Track game state for each game
+const gameState = new Map()
+
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id)
 
@@ -34,8 +37,27 @@ io.on('connection', (socket) => {
       buzzerState.set(gameId, {
         isActive: false,
         firstBuzz: null,
-        buzzedPlayers: new Set()
+        buzzedPlayers: new Set(),
+        buzzStartTime: null,
+        buzzOrder: []
       })
+    }
+
+    // Initialize game state for this game if it doesn't exist
+    if (!gameState.has(gameId)) {
+      gameState.set(gameId, {
+        currentQuestion: null,
+        isPlaying: false,
+        buzzStartTime: null,
+        buzzOrder: [],
+        scoreboard: []
+      })
+    }
+
+    // Send current game state to the new client
+    const currentGameState = gameState.get(gameId)
+    if (currentGameState) {
+      socket.emit('game-state-update', currentGameState)
     }
   })
 
@@ -51,17 +73,41 @@ io.on('connection', (socket) => {
     console.log(`Avatar updated for player ${data.playerId} in game ${data.gameId}`)
   })
 
-  // Handle buzzer activation (from game board)
-  socket.on('activate-buzzer', (gameId) => {
-    const state = buzzerState.get(gameId)
-    if (state) {
-      state.isActive = true
-      state.firstBuzz = null
-      state.buzzedPlayers.clear()
-      console.log(`Buzzer activated for game ${gameId}`)
-      
-      // Notify all clients in the game
-      io.to(gameId).emit('buzz-activated')
+  // Handle game state updates (from game board)
+  socket.on('game-state-update', (data) => {
+    const gameId = socket.rooms.values().next().value
+    if (gameId && gameId !== socket.id) {
+      gameState.set(gameId, data)
+      socket.to(gameId).emit('game-state-update', data)
+      console.log(`Game state updated for game ${gameId}`)
+    }
+  })
+
+  // Handle buzz activation with timing (from game board)
+  socket.on('buzz-activated', (data) => {
+    const gameId = socket.rooms.values().next().value
+    if (gameId && gameId !== socket.id) {
+      const state = buzzerState.get(gameId)
+      if (state) {
+        state.isActive = true
+        state.firstBuzz = null
+        state.buzzedPlayers.clear()
+        state.buzzStartTime = data.startTime
+        state.buzzOrder = []
+        console.log(`Buzzer activated for game ${gameId} at ${data.startTime}`)
+        
+        // Update game state
+        const gameStateData = gameState.get(gameId)
+        if (gameStateData) {
+          gameStateData.isPlaying = true // This now means "question is active"
+          gameStateData.buzzStartTime = data.startTime
+          gameStateData.buzzOrder = []
+          gameState.set(gameId, gameStateData)
+        }
+        
+        // Notify all clients in the game
+        io.to(gameId).emit('buzz-activated', { startTime: data.startTime })
+      }
     }
   })
 
@@ -72,16 +118,27 @@ io.on('connection', (socket) => {
       state.isActive = false
       state.firstBuzz = null
       state.buzzedPlayers.clear()
+      state.buzzStartTime = null
+      state.buzzOrder = []
       console.log(`Buzzer deactivated for game ${gameId}`)
+      
+      // Update game state
+      const gameStateData = gameState.get(gameId)
+      if (gameStateData) {
+        gameStateData.isPlaying = false
+        gameStateData.buzzStartTime = null
+        gameStateData.buzzOrder = []
+        gameState.set(gameId, gameStateData)
+      }
       
       // Notify all clients in the game
       io.to(gameId).emit('buzz-deactivated')
     }
   })
 
-  // Handle buzz-in from players
+  // Handle buzz-in from players with client-side timing and 500ms delay validation
   socket.on('buzz-in', (data) => {
-    const { gameId, teamId, playerId, playerName, teamName } = data
+    const { gameId, teamId, playerId, playerName, teamName, clientTimestamp, timeFromStart } = data
     const state = buzzerState.get(gameId)
     
     if (!state || !state.isActive) {
@@ -96,33 +153,63 @@ io.on('connection', (socket) => {
       return
     }
 
-    // Record the buzz
+    // Check if buzz is after the 500ms delay period
+    const serverTime = Date.now()
+    const timeSinceActivation = serverTime - state.buzzStartTime
+    
+    if (timeSinceActivation < 500) {
+      // Too early, ignore the buzz
+      socket.emit('buzz-failed', { playerId, reason: 'Too early' })
+      return
+    }
+
+    // Record the buzz with client timing
     state.buzzedPlayers.add(playerId)
+    
+    const buzzData = {
+      teamId,
+      playerId,
+      playerName,
+      teamName,
+      timestamp: serverTime,
+      clientTime: clientTimestamp,
+      timeFromStart: timeFromStart,
+      serverTimeFromStart: timeSinceActivation
+    }
     
     if (!state.firstBuzz) {
       // First to buzz!
-      state.firstBuzz = { teamId, playerId, playerName, teamName }
-      console.log(`First buzz in game ${gameId}: ${playerName} from ${teamName}`)
+      state.firstBuzz = buzzData
+      console.log(`First buzz in game ${gameId}: ${playerName} from ${teamName} at ${timeFromStart}ms (server: ${timeSinceActivation}ms)`)
       
       // Notify the first buzzer
-      socket.emit('buzz-success', { playerId, isFirst: true })
+      socket.emit('buzz-success', { playerId, isFirst: true, clientTime: timeFromStart })
       
       // Notify all other clients that someone buzzed first
       socket.to(gameId).emit('buzz-success', { playerId, isFirst: false })
       
       // Notify game board of first buzz
-      io.to(gameId).emit('first-buzz', { teamId, playerId, playerName, teamName })
-      
-      // Also emit as a regular buzz for order tracking
-      io.to(gameId).emit('buzz-received', { teamId, playerId, playerName, teamName })
+      io.to(gameId).emit('first-buzz', buzzData)
     } else {
       // Not first, but still recorded
-      console.log(`Buzz in game ${gameId}: ${playerName} from ${teamName} (not first)`)
+      console.log(`Buzz in game ${gameId}: ${playerName} from ${teamName} at ${timeFromStart}ms (server: ${timeSinceActivation}ms) - not first`)
       socket.emit('buzz-success', { playerId, isFirst: false })
-      
-      // Emit for order tracking
-      io.to(gameId).emit('buzz-received', { teamId, playerId, playerName, teamName })
     }
+    
+    // Add to buzz order (sorted by client time for fairness)
+    state.buzzOrder.push(buzzData)
+    state.buzzOrder.sort((a, b) => a.timeFromStart - b.timeFromStart)
+    
+    // Update game state
+    const gameStateData = gameState.get(gameId)
+    if (gameStateData) {
+      gameStateData.buzzOrder = state.buzzOrder
+      gameState.set(gameId, gameStateData)
+    }
+    
+    // Emit for order tracking
+    io.to(gameId).emit('buzz-received', buzzData)
+    io.to(gameId).emit('buzz-order-update', { buzzOrder: state.buzzOrder })
   })
 
   // Handle buzzer reset (from game board)
@@ -132,7 +219,18 @@ io.on('connection', (socket) => {
       state.isActive = false
       state.firstBuzz = null
       state.buzzedPlayers.clear()
+      state.buzzStartTime = null
+      state.buzzOrder = []
       console.log(`Buzzer reset for game ${gameId}`)
+      
+      // Update game state
+      const gameStateData = gameState.get(gameId)
+      if (gameStateData) {
+        gameStateData.isPlaying = false
+        gameStateData.buzzStartTime = null
+        gameStateData.buzzOrder = []
+        gameState.set(gameId, gameStateData)
+      }
       
       // Notify all clients in the game
       io.to(gameId).emit('buzz-reset')
@@ -168,6 +266,12 @@ server.on('request', (req, res) => {
         } else if (event === 'reset-buzzer' && data.gameId) {
           io.to(data.gameId).emit('reset-buzzer', data.gameId)
           console.log(`Buzzer reset for game ${data.gameId}`)
+        } else if (event === 'game-state-update' && data.gameId) {
+          io.to(data.gameId).emit('game-state-update', data)
+          console.log(`Game state updated for game ${data.gameId}`)
+        } else if (event === 'buzz-activated' && data.gameId) {
+          io.to(data.gameId).emit('buzz-activated', data)
+          console.log(`Buzzer activated for game ${data.gameId}`)
         }
         
         res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -185,7 +289,9 @@ server.on('request', (req, res) => {
       status: 'ok', 
       timestamp: new Date().toISOString(),
       environment: NODE_ENV,
-      activeGames: buzzerState.size
+      activeGames: buzzerState.size,
+      gameStates: gameState.size,
+      activeConnections: io.engine.clientsCount
     }))
   } else {
     res.writeHead(404)
